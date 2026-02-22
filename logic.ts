@@ -808,6 +808,12 @@ export function ekfUpdatePersonalModel(
     state: PersonalModelState,
     labResult: LabResult
 ): { newState: PersonalModelState; diagnostics: EKFDiagnostics } {
+    const hasDoseBeforeLab = events.some(ev =>
+        ev.timeH <= labResult.timeH &&
+        ev.route !== Route.patchRemove &&
+        ev.ester !== Ester.CPA
+    );
+
     // --- Observation ---
     const obsPGmL = convertToPgMl(labResult.concValue, labResult.unit);
     const y = Math.log(Math.max(obsPGmL, EKF_EPS));
@@ -822,6 +828,46 @@ export function ekfUpdatePersonalModel(
     // --- Predicted observation ---
     const predPGmL = computeE2AtTimeWithTheta(events, weight, labResult.timeH, theta);
     const yhat = Math.log(Math.max(predPGmL, EKF_EPS));
+
+    // If there is no dosing history before this lab, treat it as a baseline point:
+    // keep parameters unchanged and avoid flagging it as an outlier.
+    if (!hasDoseBeforeLab) {
+        const anchor: ResidualAnchor = {
+            timeH: labResult.timeH,
+            logRatio: 0,
+            w: 0.3,
+            kind: 'lab',
+        };
+        const updatedAnchors = [...state.anchors, anchor]
+            .sort((a, b) => a.timeH - b.timeH)
+            .slice(-20);
+
+        const initialTrace = EKF_INITIAL_COV[0][0] + EKF_INITIAL_COV[1][1];
+        const currentTrace = state.thetaCov[0][0] + state.thetaCov[1][1];
+        const convergenceScore = Math.max(0, Math.min(1, 1 - currentTrace / initialTrace));
+
+        const baselineState: PersonalModelState = {
+            ...state,
+            anchors: updatedAnchors,
+            observationCount: state.observationCount + 1,
+            updatedAt: new Date().toISOString(),
+        };
+
+        const diagnostics: EKFDiagnostics = {
+            NIS: 0,
+            isOutlier: false,
+            residualLog: 0,
+            predictedPGmL: predPGmL,
+            observedPGmL: obsPGmL,
+            ci95Low: obsPGmL,
+            ci95High: obsPGmL,
+            convergenceScore,
+            thetaS: Math.exp(state.thetaMean[0]),
+            thetaK: Math.exp(state.thetaMean[1]),
+        };
+
+        return { newState: baselineState, diagnostics };
+    }
 
     // --- Jacobian H = [∂yhat/∂theta_s, ∂yhat/∂theta_k] ---
     // ∂yhat/∂theta_s = 1 (exact, since yhat = theta_s + log(C_pk))
