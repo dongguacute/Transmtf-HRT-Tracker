@@ -832,24 +832,14 @@ export function ekfUpdatePersonalModel(
     // If there is no dosing history before this lab, treat it as a baseline point:
     // keep parameters unchanged and avoid flagging it as an outlier.
     if (!hasDoseBeforeLab) {
-        const anchor: ResidualAnchor = {
-            timeH: labResult.timeH,
-            logRatio: 0,
-            w: 0.3,
-            kind: 'lab',
-        };
-        const updatedAnchors = [...state.anchors, anchor]
-            .sort((a, b) => a.timeH - b.timeH)
-            .slice(-20);
-
         const initialTrace = EKF_INITIAL_COV[0][0] + EKF_INITIAL_COV[1][1];
         const currentTrace = state.thetaCov[0][0] + state.thetaCov[1][1];
         const convergenceScore = Math.max(0, Math.min(1, 1 - currentTrace / initialTrace));
 
         const baselineState: PersonalModelState = {
             ...state,
-            anchors: updatedAnchors,
-            observationCount: state.observationCount + 1,
+            // Baseline points are recorded but do not contribute to EKF learning count.
+            observationCount: state.observationCount,
             updatedAt: new Date().toISOString(),
         };
 

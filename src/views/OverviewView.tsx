@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Activity, Settings, Info } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import ResultChart from '../components/ResultChart';
-import { DoseEvent, SimulationResult, LabResult, interpolateConcentration_E2, interpolateConcentration_CPA } from '../../logic';
+import { DoseEvent, SimulationResult, LabResult, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
 
 interface SimCI {
     timeH: number[];
@@ -57,11 +57,20 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
   const hasPersonalCpaModel = !!simCI && simCI.cpaAdjusted.length === simCI.timeH.length && simCI.cpaAdjusted.length > 0;
+  const hasDoseHistory = events.length > 0;
 
   const rawLevel = useMemo(() => {
     if (!simulation) return 0;
     return interpolateConcentration_E2(simulation, h) || 0;
   }, [simulation, h]);
+
+  // No dose history: use latest lab value as baseline observation for the headline card.
+  const baselineLevel = useMemo(() => {
+    if (hasDoseHistory || labResults.length === 0) return null;
+    const latest = [...labResults].sort((a, b) => b.timeH - a.timeH)[0];
+    const v = convertToPgMl(latest.concValue, latest.unit);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }, [hasDoseHistory, labResults]);
 
   const personalLevel = useMemo(() => {
     if (!hasPersonalModel) return null;
@@ -69,8 +78,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return (v > 0 && v < 5000) ? v : null;
   }, [hasPersonalModel, simCI, h]);
 
-  // E2: personal value preferred when available.
-  const currentLevel = personalLevel ?? rawLevel;
+  // E2: personal value preferred when available. If no dose history exists, show baseline lab value.
+  const currentLevel = personalLevel ?? (rawLevel || baselineLevel || 0);
 
   // 95% CI bounds for E2 at current time
   const currentCI = useMemo(() => {
@@ -183,6 +192,14 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Raw</span>
                     <span className="text-[10px] font-semibold text-gray-500">
                       {rawLevel.toFixed(1)} pg/mL
+                    </span>
+                  </div>
+                )}
+                {!hasDoseHistory && baselineLevel !== null && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold text-teal-400 uppercase tracking-wide">Baseline</span>
+                    <span className="text-[10px] font-semibold text-teal-500">
+                      {baselineLevel.toFixed(1)} pg/mL
                     </span>
                   </div>
                 )}
