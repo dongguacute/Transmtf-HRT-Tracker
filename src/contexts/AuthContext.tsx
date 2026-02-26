@@ -13,8 +13,9 @@ interface AuthContextType {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string; status?: number }>;
   register: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithTokens: (tokens: AuthTokens, username: string) => void;
   logout: (clearLocalData?: boolean) => Promise<void>;
   refreshAccessToken: () => Promise<boolean>;
 }
@@ -176,7 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     }
 
-    return { success: false, error: response.error || 'Login failed' };
+    return { success: false, error: response.error || 'Login failed', status: response.status };
   };
 
   const register = async (username: string, password: string, turnstileToken?: string) => {
@@ -203,6 +204,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: response.error || 'Registration failed' };
   };
 
+  const loginWithTokens = (tokens: AuthTokens, username: string) => {
+    const { access_token, refresh_token } = tokens;
+
+    setAccessToken(access_token);
+    setUser({ username });
+    apiClient.setAccessToken(access_token);
+
+    setStoredValue(TOKEN_STORAGE_KEY, access_token);
+    setStoredValue(REFRESH_TOKEN_STORAGE_KEY, refresh_token);
+    setStoredValue(USERNAME_STORAGE_KEY, username);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -212,6 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         register,
+        loginWithTokens,
         logout,
         refreshAccessToken,
       }}

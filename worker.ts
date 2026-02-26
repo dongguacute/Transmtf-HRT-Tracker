@@ -1,6 +1,5 @@
 
 export interface Env {
-  DB: D1Database;
   ASSETS: Fetcher;
   VITE_API_BASE_URL?: string;
   VITE_TURNSTILE_SITE_KEY?: string;
@@ -16,16 +15,10 @@ const buildRuntimeEnvScript = (env: Env) => {
 };
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // 这里可以处理 API 请求
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    
-    if (url.pathname.startsWith("/api/")) {
-      return new Response("API is working. D1 is bound.", { status: 200 });
-    }
 
     // 对于其他请求，返回静态资源 (React App)
-    // 注意：[assets] 配置会自动提供 env.ASSETS
     const response = await env.ASSETS.fetch(request);
     const contentType = response.headers.get('content-type') || '';
 
@@ -38,7 +31,6 @@ export default {
       .on('head', {
         element(element) {
           // Inject runtime environment variables
-          // Note: Turnstile script is loaded on-demand by TurnstileModal component
           element.append(runtimeEnvScript, { html: true });
         }
       })

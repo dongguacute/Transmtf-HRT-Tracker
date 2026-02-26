@@ -24,6 +24,13 @@ import type {
   ChangePasswordRequest,
   ChangePasswordResponse,
   StatisticsResponse,
+  OIDCConfig,
+  OIDCAuthorizeResponse,
+  OIDCCallbackRequest,
+  OIDCCallbackResponse,
+  OIDCBindStatusResponse,
+  SetLoginPasswordRequest,
+  RemoveLoginPasswordRequest,
 } from './types';
 
 import { API_BASE_URL } from './config';
@@ -166,13 +173,24 @@ class ApiClient {
     hasRetried: boolean = false
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
+    // Only set Content-Type for requests with a body to avoid unnecessary CORS preflights on GETs
+    const hasBody = options.body !== undefined;
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...options.headers,
     };
 
     // Public endpoints that don't need Authorization (exact match)
-    const publicEndpoints = ['/auth/login', '/auth/register', '/auth/refresh', '/health', '/statistics'];
+    const publicEndpoints = [
+      '/auth/login',
+      '/auth/register',
+      '/auth/refresh',
+      '/health',
+      '/statistics',
+      '/auth/oidc/config',
+      '/auth/oidc/authorize',
+      '/auth/oidc/callback',
+    ];
     const isShareView = !!endpoint.match(/^\/shares\/[^/]+\/view$/);
     const needsAuth = !publicEndpoints.includes(endpoint) && !isShareView;
 
@@ -528,6 +546,51 @@ class ApiClient {
   // Statistics API
   async getStatistics(): Promise<ApiResponse<StatisticsResponse>> {
     return this.request<StatisticsResponse>('/statistics');
+  }
+
+  // OIDC APIs
+  async getOIDCConfig(): Promise<ApiResponse<OIDCConfig>> {
+    return this.request<OIDCConfig>('/auth/oidc/config');
+  }
+
+  async getOIDCAuthorizeUrl(): Promise<ApiResponse<OIDCAuthorizeResponse>> {
+    return this.request<OIDCAuthorizeResponse>('/auth/oidc/authorize');
+  }
+
+  async oidcCallback(data: OIDCCallbackRequest): Promise<ApiResponse<OIDCCallbackResponse>> {
+    return this.request<OIDCCallbackResponse>('/auth/oidc/callback', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getOIDCBindAuthorizeUrl(): Promise<ApiResponse<OIDCAuthorizeResponse>> {
+    return this.request<OIDCAuthorizeResponse>('/auth/oidc/bind/authorize');
+  }
+
+  async oidcBindCallback(data: OIDCCallbackRequest): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>('/auth/oidc/bind/callback', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getOIDCBindStatus(): Promise<ApiResponse<OIDCBindStatusResponse>> {
+    return this.request<OIDCBindStatusResponse>('/auth/oidc/bind/status');
+  }
+
+  async setLoginPassword(data: SetLoginPasswordRequest): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>('/user/password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeLoginPassword(data: RemoveLoginPasswordRequest): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>('/user/password', {
+      method: 'DELETE',
+      body: JSON.stringify(data),
+    });
   }
 }
 

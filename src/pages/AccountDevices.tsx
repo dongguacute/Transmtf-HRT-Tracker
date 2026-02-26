@@ -106,7 +106,7 @@ const AccountDevices: React.FC = () => {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
-            <Link to="/account" className="text-gray-600 hover:text-gray-900">
+            <Link to="/profile" className="text-gray-600 hover:text-gray-900">
               <ArrowLeft size={24} />
             </Link>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">

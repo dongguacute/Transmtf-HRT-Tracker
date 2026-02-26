@@ -15,7 +15,7 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
 
     useEffect(() => {
         localStorage.setItem('hrt-lang', lang);
-        document.title = (lang.startsWith('zh') || lang === 'yue') ? "HRT 记录" : "HRT Tracker";
+        document.title = (lang.startsWith('zh') || lang === 'yue') ? "HRT 记录" : "Transmtf HRT Tracker";
         if (isInitialLangRef.current) {
             isInitialLangRef.current = false;
             return;

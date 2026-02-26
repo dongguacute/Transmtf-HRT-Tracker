@@ -70,46 +70,114 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
     <DialogContext.Provider value={{ showDialog }}>
       {children}
       {isOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-[100] p-4" style={{ animation: 'dialogFadeIn 0.18s ease-out forwards' }}>
+        <div
+          className="fixed inset-0 flex items-center justify-center z-[100] p-5"
+          style={{
+            animation: 'dialogFadeIn 0.18s ease-out forwards',
+            background: 'rgba(0, 0, 0, 0.35)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
+        >
           <style>{`
             @keyframes dialogFadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes dialogSlideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes dialogScaleIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
           `}</style>
-          <div className="w-full max-w-lg">
-            <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 p-6 transform transition-all" style={{ animation: 'dialogSlideUp 0.22s ease-out forwards' }}>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">
+          <div className="w-full max-w-sm" style={{ animation: 'dialogScaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.92)',
+              backdropFilter: 'blur(24px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+              border: '1px solid rgba(255, 255, 255, 0.7)',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.14), 0 1px 0 rgba(255,255,255,0.9) inset',
+              borderRadius: '24px',
+              padding: '24px',
+            }}>
+              <h3 className="text-base font-bold text-gray-900 mb-1.5">
                 {type === 'confirm' ? t('dialog.confirm_title') : t('dialog.alert_title')}
               </h3>
-              <p className="text-gray-600 mb-6 leading-relaxed text-sm">{message}</p>
-              <div className="flex flex-col gap-3">
-                {/* Confirm button - always shown */}
+              <p className="text-gray-500 mb-5 leading-relaxed text-sm">{message}</p>
+
+              {/* Alert: single full-width button */}
+              {type === 'alert' && (
                 <button
                   onClick={() => handleChoice('confirm')}
-                  className="w-full py-3 bg-[#f6c4d7] text-white font-bold rounded-xl hover:bg-[#f3b4cb] transition"
+                  style={{
+                    width: '100%',
+                    padding: '13px',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 100%)',
+                    border: 'none',
+                    color: 'white',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(236,72,153,0.25)',
+                  }}
                 >
                   {options.confirmText || t('btn.ok')}
                 </button>
+              )}
 
-                {/* Cancel button - shown for confirm dialogs */}
-                {type === 'confirm' && (
+              {/* Confirm: side-by-side cancel + confirm */}
+              {type === 'confirm' && (
+                <div className="flex gap-2">
                   <button
                     onClick={() => handleChoice('cancel')}
-                    className="w-full py-3 text-gray-700 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 transition"
+                    style={{
+                      flex: 1,
+                      padding: '13px',
+                      borderRadius: '14px',
+                      background: 'rgba(0,0,0,0.06)',
+                      border: 'none',
+                      color: '#374151',
+                      fontWeight: 600,
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                    }}
                   >
                     {options.cancelText || t('btn.cancel')}
                   </button>
-                )}
-
-                {/* Third option button - shown if provided */}
-                {options.thirdOption && (
                   <button
-                    onClick={() => handleChoice('third')}
-                    className="w-full py-3 text-gray-600 font-medium bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+                    onClick={() => handleChoice('confirm')}
+                    style={{
+                      flex: 1,
+                      padding: '13px',
+                      borderRadius: '14px',
+                      background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 100%)',
+                      border: 'none',
+                      color: 'white',
+                      fontWeight: 700,
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(236,72,153,0.25)',
+                    }}
                   >
-                    {options.thirdOption}
+                    {options.confirmText || t('btn.ok')}
                   </button>
-                )}
-              </div>
+                </div>
+              )}
+
+              {/* Third option */}
+              {options.thirdOption && (
+                <button
+                  onClick={() => handleChoice('third')}
+                  style={{
+                    width: '100%',
+                    marginTop: '8px',
+                    padding: '13px',
+                    borderRadius: '14px',
+                    background: 'rgba(0,0,0,0.04)',
+                    border: '1px solid rgba(0,0,0,0.07)',
+                    color: '#6b7280',
+                    fontWeight: 500,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {options.thirdOption}
+                </button>
+              )}
             </div>
           </div>
         </div>

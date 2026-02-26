@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
 import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateConcentration_CPA, LabResult, convertToPgMl } from '../../logic';
@@ -15,6 +15,120 @@ interface SimCI {
     cpaAdjusted: number[];
     cpaCi95Low: number[];
     cpaCi95High: number[];
+}
+
+interface ChartPoint {
+    time: number;
+    concE2?: number;
+    concCPA?: number;
+    concPersonal?: number;
+    concPersonalCPA?: number;
+    ci95Low?: number;
+    ci95Band?: number;
+    ci95High?: number;
+    cpaCi95Low?: number;
+    cpaCi95Band?: number;
+    cpaCi95High?: number;
+}
+
+function pointExtrema(d: ChartPoint): { min: number; max: number } {
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+
+    const include = (v: number | undefined) => {
+        if (typeof v !== 'number' || !Number.isFinite(v)) return;
+        if (v < min) min = v;
+        if (v > max) max = v;
+    };
+
+    include(d.concE2);
+    include(d.concPersonal);
+    include(d.ci95Low);
+    include(d.ci95High);
+    include(d.concCPA);
+    include(d.concPersonalCPA);
+    include(d.cpaCi95Low);
+    include(d.cpaCi95High);
+
+    if (min === Number.POSITIVE_INFINITY || max === Number.NEGATIVE_INFINITY) {
+        return { min: 0, max: 0 };
+    }
+    return { min, max };
+}
+
+function downsampleSeries(series: ChartPoint[], maxPoints = 600): ChartPoint[] {
+    if (series.length <= maxPoints) return series;
+    if (maxPoints < 3) return [series[0], series[series.length - 1]];
+
+    const first = series[0];
+    const last = series[series.length - 1];
+    const interiorStart = 1;
+    const interiorCount = Math.max(0, series.length - 2);
+
+    if (interiorCount === 0) return [first, last];
+
+    // Keep up to two representative points (min/max) per bucket.
+    const maxBuckets = Math.max(1, Math.floor((maxPoints - 2) / 2));
+    const bucketCount = Math.min(maxBuckets, interiorCount);
+    const sampled: ChartPoint[] = [first];
+
+    for (let bucket = 0; bucket < bucketCount; bucket++) {
+        const from = interiorStart + Math.floor((bucket * interiorCount) / bucketCount);
+        const to = interiorStart + Math.floor(((bucket + 1) * interiorCount) / bucketCount) - 1;
+        if (from > to) continue;
+
+        let minIdx = from;
+        let maxIdx = from;
+        let minVal = Number.POSITIVE_INFINITY;
+        let maxVal = Number.NEGATIVE_INFINITY;
+
+        for (let i = from; i <= to; i++) {
+            const { min, max } = pointExtrema(series[i]);
+            if (min < minVal) {
+                minVal = min;
+                minIdx = i;
+            }
+            if (max > maxVal) {
+                maxVal = max;
+                maxIdx = i;
+            }
+        }
+
+        if (minIdx === maxIdx) {
+            sampled.push(series[minIdx]);
+            continue;
+        }
+
+        if (minIdx < maxIdx) {
+            sampled.push(series[minIdx], series[maxIdx]);
+        } else {
+            sampled.push(series[maxIdx], series[minIdx]);
+        }
+    }
+
+    sampled.push(last);
+
+    const deduped: ChartPoint[] = [];
+    for (const point of sampled) {
+        if (!deduped.length || deduped[deduped.length - 1].time !== point.time) {
+            deduped.push(point);
+        }
+    }
+    if (deduped.length <= maxPoints) return deduped;
+
+    const compact: ChartPoint[] = [];
+    const interval = (deduped.length - 1) / (maxPoints - 1);
+    for (let i = 0; i < maxPoints; i++) {
+        const idx = Math.round(i * interval);
+        const point = deduped[idx];
+        if (!compact.length || compact[compact.length - 1].time !== point.time) {
+            compact.push(point);
+        }
+    }
+    if (compact.length > 0) {
+        compact[compact.length - 1] = deduped[deduped.length - 1];
+    }
+    return compact;
 }
 
 function interpAt(timeH: number[], values: number[], h: number): number | undefined {
@@ -93,7 +207,7 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                         <span className="text-[10px] font-bold text-rose-300">pg/mL</span>
                         {ciLow !== undefined && ciHigh !== undefined && (
                             <span className="text-[9px] text-gray-400 ml-1">
-                                [{ciLow.toFixed(0)}–{ciHigh.toFixed(0)}]
+                                [{ciLow.toFixed(0)} - {ciHigh.toFixed(0)}]
                             </span>
                         )}
                     </div>
@@ -135,11 +249,14 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
     onPointClick: (e: DoseEvent) => void;
 }) => {
     const { t, lang } = useTranslation();
-    const containerRef = useRef<HTMLDivElement>(null);
     const [xDomain, setXDomain] = useState<[number, number] | null>(null);
     const initializedRef = useRef(false);
+    const pendingDomainRef = useRef<[number, number] | null>(null);
+    const rafUpdateRef = useRef<number | null>(null);
     const E2_AXIS_FALLBACK_MAX = 10;
     const CPA_AXIS_FALLBACK_MAX = 1;
+    const MAX_RENDER_POINTS = 480;
+    const MAX_OVERVIEW_POINTS = 180;
 
     const niceCeil = (value: number, fallback: number): number => {
         if (!Number.isFinite(value) || value <= 0) return fallback;
@@ -167,57 +284,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         const norm = value / base;
         const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
         return step * base;
-    };
-
-    const downsampleSeries = <T extends { time: number }>(series: T[], maxPoints = 1200): T[] => {
-        if (series.length <= maxPoints) return series;
-        const step = Math.ceil(series.length / maxPoints);
-        const result: T[] = [];
-
-        const extremaValue = (d: any) => {
-            const vals = [
-                d.concE2, d.concPersonal, d.ci95Low, d.ci95High,
-                d.concCPA, d.concPersonalCPA, d.cpaCi95Low, d.cpaCi95High
-            ].filter((v: number | undefined) => typeof v === 'number' && Number.isFinite(v));
-            if (!vals.length) return { min: 0, max: 0 };
-            return { min: Math.min(...vals), max: Math.max(...vals) };
-        };
-
-        for (let i = 0; i < series.length; i += step) {
-            const slice = series.slice(i, i + step);
-            if (!slice.length) continue;
-
-            let minIdx = 0;
-            let maxIdx = 0;
-            let minVal = Number.POSITIVE_INFINITY;
-            let maxVal = Number.NEGATIVE_INFINITY;
-
-            for (let j = 0; j < slice.length; j++) {
-                const { min, max } = extremaValue(slice[j]);
-                if (min < minVal) {
-                    minVal = min;
-                    minIdx = j;
-                }
-                if (max > maxVal) {
-                    maxVal = max;
-                    maxIdx = j;
-                }
-            }
-
-            const bucket: T[] = [];
-            bucket.push(slice[0]);
-            if (minIdx !== 0 && minIdx !== slice.length - 1 && minIdx !== maxIdx) bucket.push(slice[minIdx]);
-            if (maxIdx !== 0 && maxIdx !== slice.length - 1) bucket.push(slice[maxIdx]);
-            if (slice.length > 1) bucket.push(slice[slice.length - 1]);
-
-            for (const pt of bucket) {
-                if (!result.length || result[result.length - 1].time !== pt.time) {
-                    result.push(pt);
-                }
-            }
-        }
-
-        return result;
     };
 
     // Build CI lookup map for fast time-based access
@@ -249,11 +315,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         return m;
     }, [simCI, hasPersonalCpaModel, hasPersonalCpaCI]);
 
-    const rawData = useMemo(() => {
+    const rawData = useMemo<ChartPoint[]>(() => {
         if (!sim || sim.timeH.length === 0) return [];
         return sim.timeH.map((t, i) => {
             const timeMs = t * 3600000;
-            // E2: raw simulation (no calibrationFn — personal model curve shows the calibrated view)
+            // E2: raw simulation (no calibrationFn; personal model curve shows the calibrated view)
             const baseE2 = sim.concPGmL_E2[i]; // pg/mL
             const rawCPA_ngmL = sim.concPGmL_CPA[i]; // ng/mL
 
@@ -289,7 +355,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         });
     }, [sim, ciMap]);
 
-    const data = useMemo(() => downsampleSeries(rawData, 1200), [rawData]);
+    const data = useMemo(() => downsampleSeries(rawData, MAX_RENDER_POINTS), [rawData]);
+    const overviewData = useMemo(() => downsampleSeries(rawData, MAX_OVERVIEW_POINTS), [rawData]);
 
     const labPoints = useMemo(() => {
         if (!labResults || labResults.length === 0) return [];
@@ -302,27 +369,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             id: l.id
         }));
     }, [labResults]);
-
-    const eventPoints = useMemo(() => {
-        if (!sim || events.length === 0) return [];
-
-        return events.map(e => {
-            const timeMs = e.timeH * 3600000;
-            const closestIdx = sim.timeH.reduce((prev, curr, i) =>
-                Math.abs(curr * 3600000 - timeMs) < Math.abs(sim.timeH[prev] * 3600000 - timeMs) ? i : prev
-            , 0);
-
-            // Use raw E2 (no calibration — personal model handles calibration)
-            const baseE2 = sim.concPGmL_E2[closestIdx]; // pg/mL
-
-            return {
-                time: timeMs,
-                concE2: baseE2,
-                event: e
-            };
-        });
-    }, [sim, events]);
-
     const { minTime, maxTime, now } = useMemo(() => {
         const series = rawData.length ? rawData : data;
         const n = new Date().getTime();
@@ -339,33 +385,36 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
     const yDomainLeft = useMemo((): [number, number | string] => {
         const visibleMin = xDomain ? xDomain[0] : minTime;
         const visibleMax = xDomain ? xDomain[1] : maxTime;
-        const source = rawData.length ? rawData : data;
-        const baseVals: number[] = [];
-        const ciVals: number[] = [];
-        const pushIfValid = (v: number | undefined) => {
-            if (typeof v !== 'number') return;
-            if (!Number.isFinite(v)) return;
-            if (v <= 0) return;
-            baseVals.push(v);
+        // Use downsampled data during interactive sliding to reduce per-frame cost.
+        const source = data;
+        let basePeak = 0;
+        let baseMin = Number.POSITIVE_INFINITY;
+        let ciPeakRaw = 0;
+        let hasBase = false;
+
+        const includeBase = (v: number | undefined) => {
+            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
+            hasBase = true;
+            if (v > basePeak) basePeak = v;
+            if (v < baseMin) baseMin = v;
         };
-        const pushCiIfValid = (v: number | undefined) => {
-            if (typeof v !== 'number') return;
-            if (!Number.isFinite(v)) return;
-            if (v <= 0) return;
-            ciVals.push(v);
+
+        const includeCi = (v: number | undefined) => {
+            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
+            if (v > ciPeakRaw) ciPeakRaw = v;
         };
+
         for (const d of source) {
             if (d.time < visibleMin || d.time > visibleMax) continue;
-            pushIfValid(d.concE2);
-            pushIfValid(d.concPersonal);
-            pushCiIfValid(d.ci95High);
+            includeBase(d.concE2);
+            includeBase(d.concPersonal);
+            includeCi(d.ci95High);
         }
         for (const l of labPoints) {
-            if (l.time >= visibleMin && l.time <= visibleMax) pushIfValid(l.conc);
+            if (l.time >= visibleMin && l.time <= visibleMax) includeBase(l.conc);
         }
-        const basePeak = baseVals.length ? Math.max(...baseVals) : 0;
-        const minVal = baseVals.length ? Math.min(...baseVals) : 0;
-        const ciPeakRaw = ciVals.length ? Math.max(...ciVals) : 0;
+
+        const minVal = hasBase ? baseMin : 0;
         const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 20) : E2_AXIS_FALLBACK_MAX;
         const ciPeak = Math.min(ciPeakRaw, ciCap);
         const peak = Math.max(basePeak, ciPeak, E2_AXIS_FALLBACK_MAX);
@@ -374,41 +423,38 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
-    }, [rawData, data, labPoints, xDomain, minTime, maxTime]);
+    }, [data, labPoints, xDomain, minTime, maxTime]);
 
     // Compute right-axis Y domain from visible CPA-related series in current viewport.
     const yDomainRight = useMemo((): [number, number | string] => {
         const visibleMin = xDomain ? xDomain[0] : minTime;
         const visibleMax = xDomain ? xDomain[1] : maxTime;
-        const source = rawData.length ? rawData : data;
-        const baseVals: number[] = [];
-        const ciVals: number[] = [];
-        const pushIfValid = (v: number | undefined) => {
-            if (typeof v !== 'number') return;
-            if (!Number.isFinite(v)) return;
-            if (v <= 0) return;
-            baseVals.push(v);
+        const source = data;
+        let basePeak = 0;
+        let ciPeakRaw = 0;
+
+        const includeBase = (v: number | undefined) => {
+            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
+            if (v > basePeak) basePeak = v;
         };
-        const pushCiIfValid = (v: number | undefined) => {
-            if (typeof v !== 'number') return;
-            if (!Number.isFinite(v)) return;
-            if (v <= 0) return;
-            ciVals.push(v);
+
+        const includeCi = (v: number | undefined) => {
+            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
+            if (v > ciPeakRaw) ciPeakRaw = v;
         };
+
         for (const d of source) {
             if (d.time < visibleMin || d.time > visibleMax) continue;
-            pushIfValid(d.concCPA);
-            pushIfValid(d.concPersonalCPA);
-            pushCiIfValid(d.cpaCi95High);
+            includeBase(d.concCPA);
+            includeBase(d.concPersonalCPA);
+            includeCi(d.cpaCi95High);
         }
-        const basePeak = baseVals.length ? Math.max(...baseVals) : 0;
-        const ciPeakRaw = ciVals.length ? Math.max(...ciVals) : 0;
         const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 0.2) : CPA_AXIS_FALLBACK_MAX;
         const ciPeak = Math.min(ciPeakRaw, ciCap);
         const peak = Math.max(basePeak, ciPeak, CPA_AXIS_FALLBACK_MAX);
         const padded = Math.max(CPA_AXIS_FALLBACK_MAX, peak * 1.12); // 12% headroom
         return [0, niceCeil(padded, CPA_AXIS_FALLBACK_MAX)];
-    }, [rawData, data, xDomain, minTime, maxTime]);
+    }, [data, xDomain, minTime, maxTime]);
 
     const nowPoint = useMemo(() => {
         if (!sim || data.length === 0) return null;
@@ -463,7 +509,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         }
     }, [data, minTime, maxTime, now]);
 
-    const clampDomain = (domain: [number, number]): [number, number] => {
+    const clampDomain = useCallback((domain: [number, number]): [number, number] => {
         const width = domain[1] - domain[0];
         // Enforce min zoom (e.g. 1 day) and max zoom (total range)
         const MIN_ZOOM = 24 * 3600 * 1000;
@@ -484,7 +530,35 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         }
 
         return [newStart, newEnd];
-    };
+    }, [minTime, maxTime]);
+
+    const commitDomain = useCallback((next: [number, number]) => {
+        setXDomain(prev => {
+            if (prev && prev[0] === next[0] && prev[1] === next[1]) return prev;
+            return next;
+        });
+    }, []);
+
+    const scheduleDomainUpdate = useCallback((next: [number, number]) => {
+        pendingDomainRef.current = next;
+        if (rafUpdateRef.current !== null) return;
+        rafUpdateRef.current = window.requestAnimationFrame(() => {
+            rafUpdateRef.current = null;
+            const pending = pendingDomainRef.current;
+            pendingDomainRef.current = null;
+            if (!pending) return;
+            commitDomain(pending);
+        });
+    }, [commitDomain]);
+
+    useEffect(() => {
+        return () => {
+            if (rafUpdateRef.current !== null) {
+                window.cancelAnimationFrame(rafUpdateRef.current);
+                rafUpdateRef.current = null;
+            }
+        };
+    }, []);
 
     const zoomToDuration = (days: number) => {
         const duration = days * 24 * 3600 * 1000;
@@ -493,38 +567,38 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
 
         const start = targetCenter - duration / 2;
         const end = targetCenter + duration / 2;
-        setXDomain(clampDomain([start, end]));
+        commitDomain(clampDomain([start, end]));
     };
 
-    const findClosestIndex = (time: number) => {
-        if (data.length === 0) return 0;
+    const findClosestIndex = useCallback((series: { time: number }[], time: number) => {
+        if (series.length === 0) return 0;
         let low = 0;
-        let high = data.length - 1;
+        let high = series.length - 1;
         while (high - low > 1) {
             const mid = Math.floor((low + high) / 2);
-            if (data[mid].time === time) return mid;
-            if (data[mid].time < time) low = mid;
+            if (series[mid].time === time) return mid;
+            if (series[mid].time < time) low = mid;
             else high = mid;
         }
-        return Math.abs(data[high].time - time) < Math.abs(data[low].time - time) ? high : low;
-    };
+        return Math.abs(series[high].time - time) < Math.abs(series[low].time - time) ? high : low;
+    }, []);
 
     const brushRange = useMemo(() => {
-        if (data.length === 0) return { startIndex: 0, endIndex: 0 };
+        if (overviewData.length === 0) return { startIndex: 0, endIndex: 0 };
         const domain = xDomain || [minTime, maxTime];
-        const startIndex = findClosestIndex(domain[0]);
-        const endIndexRaw = findClosestIndex(domain[1]);
+        const startIndex = findClosestIndex(overviewData, domain[0]);
+        const endIndexRaw = findClosestIndex(overviewData, domain[1]);
         const endIndex = Math.max(startIndex + 1, endIndexRaw);
-        return { startIndex, endIndex: Math.min(data.length - 1, endIndex) };
-    }, [data, xDomain, minTime, maxTime]);
+        return { startIndex, endIndex: Math.min(overviewData.length - 1, endIndex) };
+    }, [overviewData, xDomain, minTime, maxTime, findClosestIndex]);
 
     const handleBrushChange = (range: { startIndex?: number; endIndex?: number }) => {
-        if (!range || range.startIndex === undefined || range.endIndex === undefined || data.length === 0) return;
-        const startIndex = Math.max(0, Math.min(range.startIndex, data.length - 1));
-        const endIndex = Math.max(startIndex + 1, Math.min(range.endIndex, data.length - 1));
-        const start = data[startIndex].time;
-        const end = data[endIndex].time;
-        setXDomain(clampDomain([start, end]));
+        if (!range || range.startIndex === undefined || range.endIndex === undefined || overviewData.length === 0) return;
+        const startIndex = Math.max(0, Math.min(range.startIndex, overviewData.length - 1));
+        const endIndex = Math.max(startIndex + 1, Math.min(range.endIndex, overviewData.length - 1));
+        const start = overviewData[startIndex].time;
+        const end = overviewData[endIndex].time;
+        scheduleDomainUpdate(clampDomain([start, end]));
     };
 
     if (!sim || sim.timeH.length === 0) return (
@@ -574,9 +648,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                 </div>
             </div>
 
-            <div
-                ref={containerRef}
-                className="h-64 md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2">
+            <div className="h-64 md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2">
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={data} margin={{ top: 12, right: 10, bottom: 0, left: 10 }}>
                         <defs>
@@ -818,11 +890,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                 </ResponsiveContainer>
             </div>
             {/* Overview mini-map with draggable handles */}
-            {data.length > 1 && (
+            {overviewData.length > 1 && (
                 <div className="px-3 pb-4 mt-1">
                     <div className="w-full h-16 bg-gray-50/80 border border-gray-100 rounded-none shadow-inner overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={data} margin={{ top: 6, right: 8, left: -6, bottom: 6 }}>
+                            <AreaChart data={overviewData} margin={{ top: 6, right: 8, left: -6, bottom: 6 }}>
                                 <defs>
                                     <linearGradient id="overviewConc" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#bfdbfe" stopOpacity={0.28}/>
@@ -850,7 +922,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                                     stroke="#bfdbfe"
                                     startIndex={brushRange.startIndex}
                                     endIndex={brushRange.endIndex}
-                                    travellerWidth={10}
+                                    gap={10}
+                                    travellerWidth={12}
                                     tickFormatter={(ms) => formatDate(new Date(ms), lang)}
                                     onChange={handleBrushChange}
                                 >
@@ -873,3 +946,4 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
 };
 
 export default ResultChart;
+

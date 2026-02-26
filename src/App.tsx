@@ -6,6 +6,7 @@ import { AppDataProvider } from './contexts/AppDataContext';
 import { useAuth } from './contexts/AuthContext';
 import MainLayout from './components/MainLayout';
 import SecurityPasswordGate from './components/SecurityPasswordGate';
+import OIDCBindingGate from './components/OIDCBindingGate';
 import OverviewPage from './pages/OverviewPage';
 import HistoryPage from './pages/HistoryPage';
 import LabPage from './pages/LabPage';
@@ -15,8 +16,9 @@ import Register from './pages/Register';
 import Account from './pages/Account';
 import AccountDevices from './pages/AccountDevices';
 import AccountShares from './pages/AccountShares';
-import AccountSettings from './pages/Settings';
+import AccountOIDC from './pages/AccountOIDC';
 import SecurityPassword from './pages/SecurityPassword';
+import OIDCCallback from './pages/OIDCCallback';
 import ShareView from './pages/ShareView';
 
 // Protected route component
@@ -25,7 +27,8 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return null;
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
@@ -34,6 +37,7 @@ const App = () => (
         <DialogProvider>
             <AppDataProvider>
                 <SecurityPasswordGate />
+                <OIDCBindingGate />
                 <Routes>
                     {/* All routes use MainLayout for unified layout */}
                     <Route element={<MainLayout />}>
@@ -41,18 +45,24 @@ const App = () => (
                         <Route index element={<OverviewPage />} />
                         <Route path="history" element={<HistoryPage />} />
                         <Route path="lab" element={<LabPage />} />
-                        <Route path="settings" element={<AccountSettings />} />
+                        <Route path="settings" element={<SettingsPage />} />
+                        <Route path="profile" element={<Account />} />
 
                         {/* Auth pages */}
                         <Route path="login" element={<Login />} />
                         <Route path="register" element={<Register />} />
 
+                        {/* Legacy alias */}
+                        <Route path="account" element={<Navigate to="/profile" replace />} />
+
                         {/* Account pages - protected */}
-                        <Route path="account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
                         <Route path="account/devices" element={<ProtectedRoute><AccountDevices /></ProtectedRoute>} />
                         <Route path="account/shares" element={<ProtectedRoute><AccountShares /></ProtectedRoute>} />
-                        <Route path="account/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
                         <Route path="account/security" element={<ProtectedRoute><SecurityPassword /></ProtectedRoute>} />
+                        <Route path="account/oidc" element={<ProtectedRoute><AccountOIDC /></ProtectedRoute>} />
+
+                        {/* OIDC callback - no auth required (handles both login and bind) */}
+                        <Route path="auth/oidc/callback" element={<OIDCCallback />} />
 
                         {/* Share view */}
                         <Route path="share/:shareId" element={<ShareView />} />

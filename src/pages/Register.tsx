@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import TurnstileModal from '../components/TurnstileModal';
 import { TURNSTILE_SITE_KEY } from '../api/config';
-import { Shield } from 'lucide-react';
+import apiClient from '../api/client';
+import { Shield, Loader2 } from 'lucide-react';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -20,11 +21,15 @@ const Register: React.FC = () => {
   const isMountedRef = useRef(true);
   const hasNavigatedRef = useRef(false);
 
+  const [registrationDisabled, setRegistrationDisabled] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [oidcLoading, setOidcLoading] = useState(false);
+
   // Redirect if already logged in (only on initial mount)
   useEffect(() => {
     if (isAuthenticated && !hasNavigatedRef.current) {
       hasNavigatedRef.current = true;
-      navigate('/account', { replace: true });
+      navigate('/profile', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -33,6 +38,18 @@ const Register: React.FC = () => {
     return () => {
       isMountedRef.current = false;
     };
+  }, []);
+
+  // Fetch OIDC config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      const response = await apiClient.getOIDCConfig();
+      if (response.success && response.data) {
+        setRegistrationDisabled(response.data.registration_disabled);
+        setOidcEnabled(response.data.oidc_enabled);
+      }
+    };
+    fetchConfig();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -146,6 +163,59 @@ const Register: React.FC = () => {
     setShowTurnstileModal(false);
   };
 
+  const handleOIDCLogin = async () => {
+    setOidcLoading(true);
+    const response = await apiClient.getOIDCAuthorizeUrl();
+    setOidcLoading(false);
+
+    if (response.success && response.data) {
+      const { auth_url, state } = response.data;
+      sessionStorage.setItem('oidc_state', state);
+      sessionStorage.setItem('oidc_action', 'login');
+      window.location.href = auth_url;
+    } else {
+      setError(response.error || t('oidc.callback.error') || 'Failed to start sign-in. Please try again.');
+    }
+  };
+
+  // If registration is disabled, show a message with OIDC option
+  if (registrationDisabled) {
+    return (
+      <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
+        <div className="w-full max-w-sm">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 border border-gray-200 text-center">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              {t('register.disabled') || 'Registration Disabled'}
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 mb-6">
+              {t('register.disabledDesc') || 'New account registration is currently disabled. Please sign in with Transmtf.'}
+            </p>
+
+            {oidcEnabled && (
+              <button
+                type="button"
+                onClick={handleOIDCLogin}
+                disabled={oidcLoading}
+                className="w-full flex items-center justify-center gap-2 border border-gray-300 bg-white text-gray-800 py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base mb-4"
+              >
+                {oidcLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Shield size={18} className="text-blue-500" />
+                )}
+                {t('oidc.loginButton') || 'Sign in with Transmtf'}
+              </button>
+            )}
+
+            <Link to="/login" className="text-pink-600 hover:text-pink-700 text-sm font-medium transition">
+              {t('register.login') || 'Sign In'}
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
       <div className="w-full max-w-sm">
@@ -155,7 +225,7 @@ const Register: React.FC = () => {
               {t('register.title') || 'Create Account'}
             </h1>
             <p className="text-sm sm:text-base text-gray-600">
-              {t('register.subtitle') || 'Join HRT Tracker to sync your data'}
+              {t('register.subtitle') || 'Join Transmtf HRT Tracker to sync your data'}
             </p>
           </div>
 

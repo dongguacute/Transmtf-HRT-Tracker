@@ -150,3 +150,41 @@ export interface StatisticsResponse {
   database_size_mb: number;
   last_updated_at: string;
 }
+
+// OIDC Types
+export interface OIDCConfig {
+  oidc_enabled: boolean;
+  registration_disabled: boolean;
+}
+
+export interface OIDCAuthorizeResponse {
+  auth_url: string;
+  state: string;
+}
+
+export interface OIDCCallbackRequest {
+  code: string;
+  state: string;
+}
+
+export interface OIDCCallbackResponse {
+  tokens: AuthTokens;
+  is_new_user: boolean;
+  username?: string;
+}
+
+export interface OIDCBindStatusResponse {
+  bound: boolean;
+  oidc_subject?: string;
+  oidc_email?: string;
+  provider?: string;
+  has_password: boolean;
+}
+
+export interface SetLoginPasswordRequest {
+  password: string;
+}
+
+export interface RemoveLoginPasswordRequest {
+  password: string;
+}
