@@ -188,3 +188,8 @@ export interface SetLoginPasswordRequest {
 export interface RemoveLoginPasswordRequest {
   password: string;
 }
+
+export interface UserMeResponse {
+  username: string;
+  user_id: number;
+}

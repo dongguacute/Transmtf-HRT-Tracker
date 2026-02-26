@@ -31,6 +31,7 @@ import type {
   OIDCBindStatusResponse,
   SetLoginPasswordRequest,
   RemoveLoginPasswordRequest,
+  UserMeResponse,
 } from './types';
 
 import { API_BASE_URL } from './config';
@@ -591,6 +592,10 @@ class ApiClient {
       method: 'DELETE',
       body: JSON.stringify(data),
     });
+  }
+
+  async getMe(): Promise<ApiResponse<UserMeResponse>> {
+    return this.request<UserMeResponse>('/user/me');
   }
 }
 

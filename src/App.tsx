@@ -7,6 +7,7 @@ import { useAuth } from './contexts/AuthContext';
 import MainLayout from './components/MainLayout';
 import SecurityPasswordGate from './components/SecurityPasswordGate';
 import OIDCBindingGate from './components/OIDCBindingGate';
+import AnnouncementModal from './components/AnnouncementModal';
 import OverviewPage from './pages/OverviewPage';
 import HistoryPage from './pages/HistoryPage';
 import LabPage from './pages/LabPage';
@@ -38,6 +39,7 @@ const App = () => (
             <AppDataProvider>
                 <SecurityPasswordGate />
                 <OIDCBindingGate />
+                <AnnouncementModal />
                 <Routes>
                     {/* All routes use MainLayout for unified layout */}
                     <Route element={<MainLayout />}>
