@@ -26,6 +26,7 @@ import ImportModal from '../components/ImportModal';
 import ExportModal from '../components/ExportModal';
 import PasswordDisplayModal from '../components/PasswordDisplayModal';
 import PasswordInputModal from '../components/PasswordInputModal';
+import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
 import StatisticsModal from '../components/StatisticsModal';
 import type { Lang } from '../i18n/translations';
@@ -61,6 +62,7 @@ const SettingsPage: React.FC = () => {
     const [isPasswordInputOpen, setIsPasswordInputOpen] = useState(false);
     const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
     const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
+    const [isModelInfoOpen, setIsModelInfoOpen] = useState(false);
     const [pendingImportText, setPendingImportText] = useState<string | null>(null);
 
     const languageOptions = useMemo(() => ([
@@ -410,11 +412,7 @@ const SettingsPage: React.FC = () => {
                     </h2>
                     <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-100">
                         <button
-                            onClick={() => {
-                                showDialog('confirm', t('drawer.model_confirm'), () => {
-                                    window.open('https://misaka23323.com/articles/estrogen-model-summary', '_blank');
-                                });
-                            }}
+                            onClick={() => setIsModelInfoOpen(true)}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-purple-50"
                         >
                             <Info className="text-purple-500" size={20} />
@@ -427,7 +425,7 @@ const SettingsPage: React.FC = () => {
                         <button
                             onClick={() => {
                                 showDialog('confirm', t('drawer.github_confirm'), () => {
-                                    window.open('https://github.com/xzdmycbx/Oyama-s-HRT-Tracker', '_blank');
+                                    window.open('https://github.com/TransmtfTeam/Transmtf-HRT-Tracker', '_blank');
                                 });
                             }}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-gray-50"
@@ -513,6 +511,11 @@ const SettingsPage: React.FC = () => {
             <DisclaimerModal
                 isOpen={isDisclaimerOpen}
                 onClose={() => setIsDisclaimerOpen(false)}
+            />
+
+            <ModelInfoModal
+                isOpen={isModelInfoOpen}
+                onClose={() => setIsModelInfoOpen(false)}
             />
 
             <StatisticsModal
