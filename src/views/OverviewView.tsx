@@ -236,16 +236,16 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   <>
                     {currentCPACI && (
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wide">95% CI</span>
+                        <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wide">{t('chart.cpa_pop_range')}</span>
                         <span className="text-[11px] font-semibold text-purple-400">
-                          {currentCPACI.lo.toFixed(2)} - {currentCPACI.hi.toFixed(2)}
+                          {currentCPACI.lo.toFixed(2)} – {currentCPACI.hi.toFixed(2)}
                           <span className="text-[9px] font-normal text-purple-300 ml-0.5">ng/mL</span>
                         </span>
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wide">
-                        {t('chart.personal_model')}
+                        {t('chart.cpa_adherence')}
                       </span>
                       {personalCPA !== null && (
                         <span className="text-[10px] font-semibold text-purple-500">
@@ -253,15 +253,20 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         </span>
                       )}
                     </div>
-                    {rawCPA > 0 && (
+                    {rawCPA > 0 && rawCPA !== personalCPA && (
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Raw</span>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Base</span>
                         <span className="text-[10px] font-semibold text-gray-500">
                           {rawCPA.toFixed(2)} ng/mL
                         </span>
                       </div>
                     )}
                   </>
+                )}
+                {currentCPA > 0 && (
+                  <div className="mt-1 text-[9px] text-gray-400 leading-tight italic">
+                    {t('chart.cpa_note')}
+                  </div>
                 )}
               </div>
             </div>

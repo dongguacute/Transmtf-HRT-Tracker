@@ -139,10 +139,34 @@ export function createCalibrationInterpolator(sim: SimulationResult | null, resu
 
 const CorePK = {
     vdPerKG: 2.0, // L/kg for E2
-    vdPerKG_CPA: 14.0, // L/kg for CPA (Cyproterone Acetate, ~986L/70kg)
+    /** @deprecated Use CPA_2COMP_PK.V1_per_kg (central Vc) instead of this apparent Vd */
+    vdPerKG_CPA: 14.0, // L/kg apparent Vd (= Vss ≈ 986 L/70 kg) — NOT used for concentration
     kClear: 0.41,
     kClearInjection: 0.041,
     depotK1Corr: 1.0
+};
+
+/**
+ * CPA 2-compartment oral PK constants derived from SmPC (Diane-35 / Androcur).
+ *
+ * Macro constants α, β and micro constants are derived from:
+ *   CL  = 3.6 mL/min/kg  → 0.216 L/h/kg  (≈15.12 L/h for 70 kg)
+ *   Vss = 986 L / 70 kg  ≈ 14.09 L/kg
+ *   α   = 0.866 h⁻¹      (t1/2 ≈ 0.8 h, fast distribution phase)
+ *   β   = 0.01031 h⁻¹    (t1/2 ≈ 67 h ≈ 2.8 days, terminal elimination)
+ *   k21 = α·β / (α+β − CL/Vc)    where Vc = CL/k10
+ *   V1  = CL / k10 = 0.734 L/kg  (central compartment, ≈51 L for 70 kg)
+ *
+ * References: EMA/Bayer SmPC for cyproterone-containing products.
+ */
+const CPA_2COMP_PK = {
+    F: 0.88,          // oral bioavailability (~88% per SmPC; old code used 0.70)
+    ka: 0.5,          // oral absorption rate h⁻¹  →  Tmax ≈ 1.5 h
+    alpha: 0.8660,    // fast hybrid rate constant h⁻¹  (t1/2 ≈ 0.8 h)
+    beta: 0.01031,    // slow hybrid rate constant h⁻¹  (t1/2 ≈ 67 h ≈ 2.8 days)
+    k21: 0.03034,     // peripheral→central transfer h⁻¹
+    V1_per_kg: 0.734, // central compartment Vc per kg  (L/kg);  Vc ≈ 51 L for 70 kg
+    popLogVar: 0.09,  // population PK log-variance ≈ (0.30)² — ~30% CV for Vd/CL uncertainty
 };
 
 const EsterInfo = {
@@ -335,6 +359,40 @@ function resolveParams(event: DoseEvent): PKParams {
     return { Frac_fast: 0, k1_fast: 0, k1_slow: 0, k2: 0, k3: defaultK3, F: 0, rateMGh: 0, F_fast: 0, F_slow: 0 };
 }
 
+/**
+ * Compute CPA amount in the central compartment (mg) at time tau after a single
+ * oral dose using the 2-compartment model derived from SmPC PK parameters.
+ *
+ * Analytical solution for central compartment amount (X₁) with first-order oral absorption:
+ *   X₁(t) = F·D·ka · [
+ *     (k21−ka) / ((α−ka)(β−ka)) · exp(−ka·t)  +
+ *     (k21−α)  / ((ka−α)(β−α)) · exp(−α·t)   +
+ *     (k21−β)  / ((ka−β)(α−β)) · exp(−β·t)
+ *   ]
+ *
+ * Dividing by V1 gives central-compartment concentration.
+ */
+function compute2CompCPACentralAmount(doseMG: number, tau: number): number {
+    if (tau < 0 || doseMG <= 0) return 0;
+    const { F, ka, alpha, beta, k21 } = CPA_2COMP_PK;
+    // Guard against near-singularity (should not occur with fixed SmPC params, but defensive)
+    const eps = 1e-8;
+    if (Math.abs(alpha - ka) < eps || Math.abs(beta - ka) < eps || Math.abs(alpha - beta) < eps) {
+        // Fallback: single-compartment with terminal rate (conservative approximation)
+        if (Math.abs(ka - beta) < eps) return Math.max(0, doseMG * F * ka * tau * Math.exp(-beta * tau));
+        return Math.max(0, doseMG * F * ka / (ka - beta) * (Math.exp(-beta * tau) - Math.exp(-ka * tau)));
+    }
+    const A = (k21 - ka)    / ((alpha - ka) * (beta - ka));
+    const B = (k21 - alpha) / ((ka - alpha) * (beta - alpha));
+    const C = (k21 - beta)  / ((ka - beta)  * (alpha - beta));
+    const val = doseMG * F * ka * (
+        A * Math.exp(-ka    * tau) +
+        B * Math.exp(-alpha * tau) +
+        C * Math.exp(-beta  * tau)
+    );
+    return Math.max(0, val);
+}
+
 // 3-Compartment Analytical Solution
 function _analytic3C(tau: number, doseMG: number, F: number, k1: number, k2: number, k3: number): number {
     if (k1 <= 0 || doseMG <= 0) return 0;
@@ -385,6 +443,10 @@ class PrecomputedEventModel {
                 this.model = (timeH: number) => {
                     const tau = timeH - startTime;
                     if (tau < 0) return 0;
+                    // CPA oral uses dedicated 2-compartment model
+                    if (event.ester === Ester.CPA) {
+                        return compute2CompCPACentralAmount(dose, tau);
+                    }
                     return oneCompAmount(tau, dose, params);
                 };
                 break;
@@ -465,7 +527,8 @@ export function runSimulation(events: DoseEvent[], bodyWeightKG: number): Simula
 
     // Different Vd for E2 and CPA
     const plasmaVolumeML_E2 = CorePK.vdPerKG * bodyWeightKG * 1000; // E2: ~2.0 L/kg
-    const plasmaVolumeML_CPA = CorePK.vdPerKG_CPA * bodyWeightKG * 1000; // CPA: ~14.0 L/kg
+    // CPA: use central compartment V1, not apparent Vss — 2-compartment model requires this
+    const plasmaVolumeML_CPA = CPA_2COMP_PK.V1_per_kg * bodyWeightKG * 1000; // Vc ≈ 51 L for 70 kg
 
     const timeH: number[] = [];
     const concPGmL: number[] = [];
@@ -729,30 +792,38 @@ function computeEventAmountWithKScale(
 }
 
 /**
- * Compute CPA oral amount at time tau after an oral CPA dose event,
- * using a scaled clearance rate (kScale = exp(theta_k)).
+ * Compute CPA amount in central compartment (mg) for a single dose event,
+ * scaling the effective dose by an adherence factor inferred from E2 EKF.
+ *
+ * Scientific basis: E2 θₛ (amplitude) encodes how faithfully actual medication
+ * intake matches records.  This adherence factor is applied to the CPA dose,
+ * NOT to CPA PK parameters — because E2 and CPA share the same dosing schedule
+ * but their clearance mechanisms are independent (CPA is not directly measurable).
+ *
+ * @param adherenceScale  exp(θₛ) from E2 EKF (dose multiplier, not PK parameter)
  */
-function computeCPAEventAmountWithKScale(
+function computeCPAAmountWithAdherence(
     event: DoseEvent,
     tau: number,
-    kScale: number
+    adherenceScale: number
 ): number {
-    if (tau < 0) return 0;
-    if (event.ester !== Ester.CPA) return 0;
-    // CPA oral 1-compartment: k1=1.0 h⁻¹, k3=0.017 h⁻¹, F=0.7
-    const k1 = 1.0;
-    const k3 = 0.017 * kScale;
-    const F = 0.7;
-    if (Math.abs(k1 - k3) < 1e-9) {
-        return event.doseMG * F * k1 * tau * Math.exp(-k3 * tau);
-    }
-    return event.doseMG * F * k1 / (k1 - k3) * (Math.exp(-k3 * tau) - Math.exp(-k1 * tau));
+    if (tau < 0 || event.ester !== Ester.CPA) return 0;
+    return compute2CompCPACentralAmount(event.doseMG * adherenceScale, tau);
 }
 
 /**
- * Compute CPA plasma concentration (ng/mL) at a single time point,
- * applying individual EKF-learned parameters theta = [theta_s, theta_k].
- * theta_s scales bioavailability; theta_k scales clearance.
+ * Compute CPA plasma concentration (ng/mL) at a single time point using the
+ * 2-compartment model, with E2-inferred adherence applied to the CPA dose.
+ *
+ * theta[0] (θₛ, amplitude) → adherenceScale = exp(θₛ): scales CPA effective dose.
+ *   E2 amplitude encodes how closely recorded dosing matches actual intake.
+ *   Applying this to CPA dose (not CPA PK) is scientifically defensible because:
+ *   – E2 and CPA share the same dosing schedule/adherence behaviour.
+ *   – CPA PK parameters (CL, Vd) are independent of E2 and cannot be inferred
+ *     from E2 measurements alone.
+ *
+ * theta[1] (θₖ, clearance) is NOT applied to CPA — there are no CPA measurements
+ * to constrain CPA-specific clearance variation.
  */
 export function computeCPAAtTimeWithTheta(
     events: DoseEvent[],
@@ -760,16 +831,15 @@ export function computeCPAAtTimeWithTheta(
     timeH: number,
     theta: [number, number]
 ): number {
-    const s = Math.exp(theta[0]);
-    const kScale = Math.exp(theta[1]);
+    const adherence = Math.exp(theta[0]); // dose-level adherence proxy from E2 EKF
     const sorted = [...events].sort((a, b) => a.timeH - b.timeH);
-    let totalMG = 0;
+    let totalCentralMG = 0;
     for (const ev of sorted) {
         if (ev.timeH > timeH) continue;
-        totalMG += computeCPAEventAmountWithKScale(ev, timeH - ev.timeH, kScale);
+        totalCentralMG += computeCPAAmountWithAdherence(ev, timeH - ev.timeH, adherence);
     }
-    const plasmaVolML = CorePK.vdPerKG_CPA * weight * 1000;
-    return Math.max(0, (totalMG * 1e6) / plasmaVolML * s); // ng/mL
+    const V1_mL = CPA_2COMP_PK.V1_per_kg * weight * 1000;
+    return Math.max(0, (totalCentralMG * 1e6) / V1_mL); // ng/mL
 }
 
 /**
@@ -1046,23 +1116,23 @@ export function computeSimulationWithCI(
         const [e2CiLow, e2CiHigh] = clampCI(e2CiRawLow, e2CiRawHigh, EKF_CI_MAX_E2);
 
         const cpaPred = applyE2LearningToCPA
-            ? computeCPAAtTimeWithTheta(events, weight, timeH, theta)
-            : 0;
+            ? computeCPAAtTimeWithTheta(events, weight, timeH, theta)   // adherence-scaled
+            : computeCPAAtTimeWithTheta(events, weight, timeH, [0, 0]); // population mean (no adherence adj.)
 
+        // CPA CI: population PK uncertainty + optional adherence uncertainty from E2 learning.
+        // Unlike E2, CPA has no direct measurements, so we do NOT use the EKF Jacobian
+        // (which would incorrectly assume E2 and CPA share the same clearance variation).
+        // Instead: var(log CPA) = adherence uncertainty (P[0][0] when enabled) + popLogVar.
+        // CI is always computed (even near floor) to avoid discontinuous bands.
         let cpaCiLow = 0;
         let cpaCiHigh = 0;
-        if (applyE2LearningToCPA) {
-            const cpaPredK = computeCPAAtTimeWithTheta(events, weight, timeH, [theta[0], theta[1] + EKF_DELTA_K]);
-            const yhatCPA = Math.log(Math.max(cpaPred, EKF_EPS_CPA));
-            const yhatCPAK = Math.log(Math.max(cpaPredK, EKF_EPS_CPA));
-            const hKCPA = (yhatCPAK - yhatCPA) / EKF_DELTA_K;
-            const varYhatCPA = P[0][0] + 2 * P[0][1] * hKCPA + P[1][1] * hKCPA * hKCPA;
-            const totalVarCPA = varYhatCPA + state.Rlog;
-            const stdCPA = Math.sqrt(Math.max(0, totalVarCPA));
-            const cpaCiRawLow = Math.exp(yhatCPA - 1.96 * stdCPA);
-            const cpaCiRawHigh = Math.exp(yhatCPA + 1.96 * stdCPA);
-            [cpaCiLow, cpaCiHigh] = clampCI(cpaCiRawLow, cpaCiRawHigh, EKF_CI_MAX_CPA);
-        }
+        const adherenceVar = applyE2LearningToCPA ? Math.max(0, P[0][0]) : 0;
+        const varLogCPA = adherenceVar + CPA_2COMP_PK.popLogVar;
+        const stdCPA = Math.sqrt(Math.max(0, varLogCPA));
+        const yhatCPA = Math.log(Math.max(cpaPred, EKF_EPS_CPA));
+        const cpaCiRawLow  = Math.exp(yhatCPA - 1.96 * stdCPA);
+        const cpaCiRawHigh = Math.exp(yhatCPA + 1.96 * stdCPA);
+        [cpaCiLow, cpaCiHigh] = clampCI(cpaCiRawLow, cpaCiRawHigh, EKF_CI_MAX_CPA);
 
         sampledResults.push({
             idx,
@@ -1079,9 +1149,10 @@ export function computeSimulationWithCI(
     const e2Adjusted = new Array<number>(n).fill(0);
     const ci95Low = new Array<number>(n).fill(0);
     const ci95High = new Array<number>(n).fill(0);
-    const cpaAdjusted = applyE2LearningToCPA ? new Array<number>(n).fill(0) : [];
-    const cpaCi95Low = applyE2LearningToCPA ? new Array<number>(n).fill(0) : [];
-    const cpaCi95High = applyE2LearningToCPA ? new Array<number>(n).fill(0) : [];
+    // CPA arrays are always filled — 2-compartment model is always active
+    const cpaAdjusted  = new Array<number>(n).fill(0);
+    const cpaCi95Low   = new Array<number>(n).fill(0);
+    const cpaCi95High  = new Array<number>(n).fill(0);
 
     for (let j = 0; j < sampledResults.length; j++) {
         const a = sampledResults[j];
@@ -1092,11 +1163,9 @@ export function computeSimulationWithCI(
             e2Adjusted[i] = a.e2Adj + (b.e2Adj - a.e2Adj) * frac;
             ci95Low[i] = a.ci95Low + (b.ci95Low - a.ci95Low) * frac;
             ci95High[i] = a.ci95High + (b.ci95High - a.ci95High) * frac;
-            if (applyE2LearningToCPA) {
-                cpaAdjusted[i] = a.cpaAdj + (b.cpaAdj - a.cpaAdj) * frac;
-                cpaCi95Low[i] = a.cpaCi95Low + (b.cpaCi95Low - a.cpaCi95Low) * frac;
-                cpaCi95High[i] = a.cpaCi95High + (b.cpaCi95High - a.cpaCi95High) * frac;
-            }
+            cpaAdjusted[i]  = a.cpaAdj     + (b.cpaAdj     - a.cpaAdj)     * frac;
+            cpaCi95Low[i]   = a.cpaCi95Low  + (b.cpaCi95Low  - a.cpaCi95Low)  * frac;
+            cpaCi95High[i]  = a.cpaCi95High + (b.cpaCi95High - a.cpaCi95High) * frac;
         }
     }
 
