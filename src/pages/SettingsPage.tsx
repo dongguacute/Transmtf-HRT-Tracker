@@ -152,7 +152,7 @@ const SettingsPage: React.FC = () => {
 
             const nextEvents = newEvents.length > 0 ? newEvents : events;
             const nextWeight = newWeight !== undefined ? newWeight : weight;
-            const nextLabResults = newLabResults.length > 0 ? newLabResults : labResults;
+            const nextLabResults = newLabResults;
 
             if (newEvents.length > 0) {
                 setEvents(newEvents);
@@ -164,10 +164,8 @@ const SettingsPage: React.FC = () => {
                 localStorage.setItem('hrt-weight', newWeight.toString());
             }
 
-            if (newLabResults.length > 0) {
-                setLabResults(newLabResults);
-                localStorage.setItem('hrt-lab-results', JSON.stringify(newLabResults));
-            }
+            setLabResults(newLabResults);
+            localStorage.setItem('hrt-lab-results', JSON.stringify(newLabResults));
 
             const lastModified = new Date().toISOString();
             localStorage.setItem('hrt-last-modified', lastModified);
