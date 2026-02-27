@@ -1,28 +1,23 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import apiClient from '../api/client';
-import { AlertTriangle, KeyRound, Loader2, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Loader2, ShieldAlert } from 'lucide-react';
 
 // Pages where the gate must not block (exact match)
 const EXEMPT_PATHS = new Set(['/login', '/register', '/auth/oidc/callback', '/account/oidc']);
 
-type GatePhase = 'idle' | 'binding_required' | 'password_removal_required' | 'off';
+type GatePhase = 'idle' | 'binding_required' | 'off';
 
 const OIDCBindingGate: React.FC = () => {
-  const { isAuthenticated, isLoading, logout } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const { t } = useTranslation();
   const location = useLocation();
-  const navigate = useNavigate();
 
   const [phase, setPhase] = useState<GatePhase>('idle');
   const [startingBind, setStartingBind] = useState(false);
   const [bindError, setBindError] = useState('');
-
-  const [password, setPassword] = useState('');
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState('');
 
   const hasCheckedRef = useRef(false);
   // Stale-async cancellation: increment on each new check, discard outdated results
@@ -52,14 +47,8 @@ const OIDCBindingGate: React.FC = () => {
       hasCheckedRef.current = true;
 
       if (statusRes.success && statusRes.data) {
-        const { bound, has_password } = statusRes.data;
-        if (!bound) {
-          setPhase('binding_required');
-        } else if (has_password) {
-          setPhase('password_removal_required');
-        } else {
-          setPhase('off');
-        }
+        const { bound } = statusRes.data;
+        setPhase(bound ? 'off' : 'binding_required');
       } else {
         // Can't determine status — fail open to avoid locking users out
         setPhase('off');
@@ -109,26 +98,6 @@ const OIDCBindingGate: React.FC = () => {
       setBindError(t('oidcGate.bindError') || 'Failed to start binding. Please try again.');
     } finally {
       setStartingBind(false);
-    }
-  };
-
-  const handleRemovePassword = async () => {
-    if (!password) return;
-    setRemoving(true);
-    setRemoveError('');
-    try {
-      const response = await apiClient.removeLoginPassword({ password });
-      if (response.success) {
-        // Server removed the password; log out all sessions then redirect to login
-        await logout();
-        navigate('/login', { replace: true });
-      } else {
-        setRemoveError(t('oidcGate.removeError') || 'Failed to remove password. Please check your password and try again.');
-      }
-    } catch {
-      setRemoveError(t('oidcGate.removeError') || 'Failed to remove password. Please check your password and try again.');
-    } finally {
-      setRemoving(false);
     }
   };
 
@@ -202,79 +171,6 @@ const OIDCBindingGate: React.FC = () => {
       </div>
     );
   }
-
-  // --- Phase 2: Must remove login password ---
-  return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center px-4 py-6 overflow-y-auto"
-      style={{ background: 'linear-gradient(160deg, rgba(15,23,42,0.97) 0%, rgba(30,27,75,0.97) 50%, rgba(15,23,42,0.97) 100%)', backdropFilter: 'blur(24px)' }}
-    >
-      <div className="w-full max-w-sm mx-auto my-auto animate-gate-in">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5 bg-amber-500/15 ring-4 ring-amber-500/25">
-            <KeyRound size={38} className="text-amber-400" strokeWidth={1.8} />
-          </div>
-          <h2 className="text-2xl font-bold text-white text-center mb-2">
-            {t('oidcGate.removeTitle') || 'Remove Login Password Required'}
-          </h2>
-          <p className="text-sm text-gray-400 text-center max-w-xs leading-relaxed">
-            {t('oidcGate.removeSubtitle') || 'Accounts linked to Transmtf must use Transmtf exclusively'}
-          </p>
-        </div>
-
-        <div className="mb-6 flex items-start gap-3 bg-white/5 rounded-2xl px-4 py-3 border border-white/8">
-          <AlertTriangle size={15} className="text-amber-400 flex-shrink-0 mt-0.5" strokeWidth={2.2} />
-          <p className="text-xs text-gray-300 leading-relaxed">
-            {t('oidcGate.removeReason') || 'Password login is insecure. Since your Transmtf identity is linked, you must remove your password so only Transmtf can be used to sign in.'}
-          </p>
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-400 mb-2">
-            {t('oidcGate.currentPassword') || 'Current Password'}
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !removing && password && handleRemovePassword()}
-            placeholder={t('oidcGate.currentPasswordPlaceholder') || 'Enter your current login password'}
-            className="w-full bg-white/8 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition"
-            disabled={removing}
-          />
-        </div>
-
-        {removeError && (
-          <p className="text-red-400 text-xs text-center mb-4">{removeError}</p>
-        )}
-
-        <button
-          onClick={handleRemovePassword}
-          disabled={removing || !password}
-          className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-2xl transition-all duration-200 shadow-lg shadow-amber-900/40 text-sm"
-        >
-          {removing ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              {t('oidcGate.removing') || 'Removing...'}
-            </>
-          ) : (
-            t('oidcGate.removeButton') || 'Remove Password & Continue'
-          )}
-        </button>
-      </div>
-
-      <style>{`
-        @keyframes gate-in {
-          from { opacity: 0; transform: scale(0.97) translateY(12px); }
-          to   { opacity: 1; transform: scale(1)    translateY(0); }
-        }
-        .animate-gate-in {
-          animation: gate-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-      `}</style>
-    </div>
-  );
 };
 
 export default OIDCBindingGate;

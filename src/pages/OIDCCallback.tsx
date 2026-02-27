@@ -5,31 +5,6 @@ import { useTranslation } from '../contexts/LanguageContext';
 import apiClient from '../api/client';
 import { Loader2 } from 'lucide-react';
 
-function decodeJWTUsername(token: string): string | null {
-  try {
-    const base64Payload = token.split('.')[1];
-    if (!base64Payload) return null;
-    const json = atob(base64Payload.replace(/-/g, '+').replace(/_/g, '/'));
-    const payload = JSON.parse(json);
-    // Common JWT username claim fields
-    return payload.username ?? payload.preferred_username ?? payload.sub ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function decodeJWTUserId(token: string): string | null {
-  try {
-    const base64Payload = token.split('.')[1];
-    if (!base64Payload) return null;
-    const json = atob(base64Payload.replace(/-/g, '+').replace(/_/g, '/'));
-    const payload = JSON.parse(json);
-    return payload.user_id != null ? String(payload.user_id) : null;
-  } catch {
-    return null;
-  }
-}
-
 const OIDCCallback: React.FC = () => {
   const navigate = useNavigate();
   const { loginWithTokens, accessToken, isLoading } = useAuth();
@@ -87,27 +62,12 @@ const OIDCCallback: React.FC = () => {
         if (response.success && response.data) {
           const { tokens, username } = response.data;
 
-          // 1st choice: username from response (new users)
-          // 2nd choice: username from JWT standard claims
-          let resolvedUsername = username ?? decodeJWTUsername(tokens.access_token);
-
-          if (!resolvedUsername) {
-            // 3rd choice: fetch from /user/me (existing users whose JWT only has user_id)
-            apiClient.setAccessToken(tokens.access_token);
-            const meRes = await apiClient.getMe();
-            if (meRes.success && meRes.data?.username) {
-              resolvedUsername = meRes.data.username;
-            } else {
-              // 4th choice: use user_id from JWT as last resort
-              resolvedUsername = decodeJWTUserId(tokens.access_token);
-            }
-          }
-
-          if (!resolvedUsername) {
+          // Backend always returns username in data.username (both new and existing users)
+          if (!username) {
             setError(t('oidc.callback.error') || 'Could not determine account. Please try again.');
             return;
           }
-          loginWithTokens(tokens, resolvedUsername);
+          loginWithTokens(tokens, username);
           navigate('/', { replace: true });
         } else {
           setError(response.error || t('oidc.callback.error') || 'Sign-in failed.');
