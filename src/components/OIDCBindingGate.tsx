@@ -130,7 +130,7 @@ const OIDCBindingGate: React.FC = () => {
             {[
               t('oidcGate.reason1') || 'Password-only accounts are vulnerable to brute force and phishing attacks',
               t('oidcGate.reason2') || 'Linking Transmtf protects your account even if your password is compromised',
-              t('oidcGate.reason3') || 'This is a one-time permanent action. You may remove your password afterwards',
+              t('oidcGate.reason3') || 'This is a one-time permanent action. After binding, you can still sign in with either your password or Transmtf',
             ].map((reason, i) => (
               <div key={i} className="flex items-start gap-3 bg-white/5 rounded-2xl px-4 py-3 border border-white/8">
                 <AlertTriangle size={15} className="text-amber-400 flex-shrink-0 mt-0.5" strokeWidth={2.2} />
