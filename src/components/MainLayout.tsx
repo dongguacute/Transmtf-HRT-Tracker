@@ -195,7 +195,7 @@ const MainLayout: React.FC = () => {
             </main>
 
             {/* ── Mobile bottom nav — iOS 26 Liquid Glass ── */}
-            <nav className="shrink-0 md:hidden px-3 pt-1 pb-3 bg-gray-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+            <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden px-3 pt-1 pb-3 bg-gray-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
                 <div
                     className="rounded-3xl px-1.5 py-1.5"
                     style={{
