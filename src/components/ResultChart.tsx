@@ -12,6 +12,8 @@ interface SimCI {
     e2Adjusted: number[];
     ci95Low: number[];
     ci95High: number[];
+    ci68Low: number[];
+    ci68High: number[];
     cpaAdjusted: number[];
     cpaCi95Low: number[];
     cpaCi95High: number[];
@@ -26,6 +28,9 @@ interface ChartPoint {
     ci95Low?: number;
     ci95Band?: number;
     ci95High?: number;
+    ci68Low?: number;
+    ci68Band?: number;
+    ci68High?: number;
     cpaCi95Low?: number;
     cpaCi95Band?: number;
     cpaCi95High?: number;
@@ -45,6 +50,8 @@ function pointExtrema(d: ChartPoint): { min: number; max: number } {
     include(d.concPersonal);
     include(d.ci95Low);
     include(d.ci95High);
+    include(d.ci68Low);
+    include(d.ci68High);
     include(d.concCPA);
     include(d.concPersonalCPA);
     include(d.cpaCi95Low);
@@ -181,6 +188,8 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
         const concPersonalCPA = dataPoint.concPersonalCPA;
         const ciLow = dataPoint.ci95Low;
         const ciHigh = dataPoint.ci95High;
+        const ci68Low = dataPoint.ci68Low;
+        const ci68High = dataPoint.ci68High;
         const cpaCiLow = dataPoint.cpaCi95Low;
         const cpaCiHigh = dataPoint.cpaCi95High;
 
@@ -199,16 +208,31 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                     </div>
                 )}
                 {concPersonal !== undefined && concPersonal > 0 && (
-                    <div className="flex items-baseline gap-1 mt-0.5">
-                        <span className="text-[9px] font-bold text-rose-400">{t('chart.personal_model')} E2:</span>
-                        <span className="text-sm font-black text-rose-600 tracking-tight">
-                            {concPersonal.toFixed(1)}
-                        </span>
-                        <span className="text-[10px] font-bold text-rose-300">pg/mL</span>
-                        {ciLow !== undefined && ciHigh !== undefined && (
-                            <span className="text-[9px] text-gray-400 ml-1">
-                                [{ciLow.toFixed(0)} - {ciHigh.toFixed(0)}]
+                    <div className="mt-0.5">
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-[9px] font-bold text-rose-400">{t('chart.personal_model')} E2:</span>
+                            <span className="text-sm font-black text-rose-600 tracking-tight">
+                                {concPersonal.toFixed(1)}
                             </span>
+                            <span className="text-[10px] font-bold text-rose-300">pg/mL</span>
+                        </div>
+                        {ci68Low !== undefined && ci68High !== undefined && (
+                            <div className="flex items-center gap-1 ml-1 mt-0.5">
+                                <span className="text-[8px] font-bold text-rose-300 uppercase w-8">{t('chart.ci68_band')}</span>
+                                <span className="text-[9px] text-rose-400 font-medium">
+                                    {ci68Low.toFixed(0)} – {ci68High.toFixed(0)}
+                                    <span className="text-[8px] font-normal text-rose-300 ml-0.5">pg/mL</span>
+                                </span>
+                            </div>
+                        )}
+                        {ciLow !== undefined && ciHigh !== undefined && (
+                            <div className="flex items-center gap-1 ml-1 mt-0.5">
+                                <span className="text-[8px] font-bold text-gray-400 uppercase w-8">{t('chart.ci_band')}</span>
+                                <span className="text-[9px] text-gray-500 font-medium">
+                                    {ciLow.toFixed(0)} – {ciHigh.toFixed(0)}
+                                    <span className="text-[8px] font-normal text-gray-400 ml-0.5">pg/mL</span>
+                                </span>
+                            </div>
                         )}
                     </div>
                 )}
@@ -222,16 +246,22 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                     </div>
                 )}
                 {concPersonalCPA !== undefined && concPersonalCPA > 0 && (
-                    <div className="flex items-baseline gap-1 mt-0.5">
-                        <span className="text-[9px] font-bold text-violet-500">{t('chart.personal_model')} CPA:</span>
-                        <span className="text-sm font-black text-violet-700 tracking-tight">
-                            {concPersonalCPA.toFixed(1)}
-                        </span>
-                        <span className="text-[10px] font-bold text-violet-400">ng/mL</span>
-                        {cpaCiLow !== undefined && cpaCiHigh !== undefined && (
-                            <span className="text-[9px] text-gray-400 ml-1">
-                                [{cpaCiLow.toFixed(2)} - {cpaCiHigh.toFixed(2)}]
+                    <div className="mt-0.5">
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-[9px] font-bold text-violet-500">{t('chart.personal_model')} CPA:</span>
+                            <span className="text-sm font-black text-violet-700 tracking-tight">
+                                {concPersonalCPA.toFixed(1)}
                             </span>
+                            <span className="text-[10px] font-bold text-violet-400">ng/mL</span>
+                        </div>
+                        {cpaCiLow !== undefined && cpaCiHigh !== undefined && (
+                            <div className="flex items-center gap-1 ml-1 mt-0.5">
+                                <span className="text-[8px] font-bold text-gray-400 uppercase w-8">{t('chart.ci_band')}</span>
+                                <span className="text-[9px] text-gray-500 font-medium">
+                                    {cpaCiLow.toFixed(2)} – {cpaCiHigh.toFixed(2)}
+                                    <span className="text-[8px] font-normal text-gray-400 ml-0.5">ng/mL</span>
+                                </span>
+                            </div>
                         )}
                     </div>
                 )}
@@ -297,6 +327,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         const m = new Map<number, {
             ci95Low: number;
             ci95High: number;
+            ci68Low: number;
+            ci68High: number;
             e2Adj: number;
             cpaAdj?: number;
             cpaCi95Low?: number;
@@ -306,6 +338,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             m.set(simCI.timeH[i], {
                 ci95Low: simCI.ci95Low[i],
                 ci95High: simCI.ci95High[i],
+                ci68Low: simCI.ci68Low[i],
+                ci68High: simCI.ci68High[i],
                 e2Adj: simCI.e2Adjusted[i],
                 cpaAdj: hasPersonalCpaModel ? simCI.cpaAdjusted[i] : undefined,
                 cpaCi95Low: hasPersonalCpaCI ? simCI.cpaCi95Low[i] : undefined,
@@ -323,10 +357,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             const baseE2 = sim.concPGmL_E2[i]; // pg/mL
             const rawCPA_ngmL = sim.concPGmL_CPA[i]; // ng/mL
 
-            // Personal model CI data (from EKF)
+            // Personal model CI data (from OU-Kalman calibration)
             const ciEntry = ciMap?.get(t);
             const ci95Low = ciEntry?.ci95Low;
             const ci95High = ciEntry?.ci95High;
+            const ci68Low = ciEntry?.ci68Low;
+            const ci68High = ciEntry?.ci68High;
             const concPersonal = ciEntry?.e2Adj;
             const concPersonalCPA = ciEntry?.cpaAdj;
             const cpaCi95Low = ciEntry?.cpaCi95Low;
@@ -334,6 +370,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             // ci95Band = ci95High - ci95Low for stacked Area rendering
             const ci95Band = (ci95Low !== undefined && ci95High !== undefined)
                 ? Math.max(0, ci95High - ci95Low)
+                : undefined;
+            // ci68Band = ci68High - ci68Low (inner, tighter band)
+            const ci68Band = (ci68Low !== undefined && ci68High !== undefined)
+                ? Math.max(0, ci68High - ci68Low)
                 : undefined;
             const cpaCi95Band = (cpaCi95Low !== undefined && cpaCi95High !== undefined)
                 ? Math.max(0, cpaCi95High - cpaCi95Low)
@@ -348,6 +388,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                 ci95Low,
                 ci95Band,
                 ci95High,
+                ci68Low,
+                ci68Band,
+                ci68High,
                 cpaCi95Low,
                 cpaCi95Band,
                 cpaCi95High,
@@ -465,6 +508,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         const concPersonal = simCI ? interpAt(simCI.timeH, simCI.e2Adjusted, h) : undefined;
         const ci95Low = simCI ? interpAt(simCI.timeH, simCI.ci95Low, h) : undefined;
         const ci95High = simCI ? interpAt(simCI.timeH, simCI.ci95High, h) : undefined;
+        const ci68Low = simCI ? interpAt(simCI.timeH, simCI.ci68Low, h) : undefined;
+        const ci68High = simCI ? interpAt(simCI.timeH, simCI.ci68High, h) : undefined;
         const concPersonalCPA = hasPersonalCpaModel
             ? interpAt(simCI!.timeH, simCI!.cpaAdjusted, h)
             : undefined;
@@ -487,6 +532,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             concPersonal,
             ci95Low,
             ci95High,
+            ci68Low,
+            ci68High,
             concPersonalCPA,
             cpaCi95Low,
             cpaCi95High,
@@ -732,9 +779,41 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                                     dataKey="ci95Band"
                                     yAxisId="left"
                                     stroke="none"
-                                    fill="rgba(244,63,94,0.10)"
+                                    fill="rgba(244,63,94,0.09)"
                                     fillOpacity={1}
                                     stackId="ci"
+                                    isAnimationActive={false}
+                                    dot={false}
+                                    activeDot={false}
+                                    legendType="none"
+                                />
+                            </>
+                        )}
+                        {/* 68% CI band (inner band, darker — rendered above 95%) */}
+                        {hasPersonalModel && (
+                            <>
+                                <Area
+                                    data={data}
+                                    type="monotone"
+                                    dataKey="ci68Low"
+                                    yAxisId="left"
+                                    stroke="none"
+                                    fill="none"
+                                    stackId="ci68"
+                                    isAnimationActive={false}
+                                    dot={false}
+                                    activeDot={false}
+                                    legendType="none"
+                                />
+                                <Area
+                                    data={data}
+                                    type="monotone"
+                                    dataKey="ci68Band"
+                                    yAxisId="left"
+                                    stroke="none"
+                                    fill="rgba(244,63,94,0.17)"
+                                    fillOpacity={1}
+                                    stackId="ci68"
                                     isAnimationActive={false}
                                     dot={false}
                                     activeDot={false}

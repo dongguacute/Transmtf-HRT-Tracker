@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { FlaskConical, Pill, BrainCircuit, X } from 'lucide-react';
+import { FlaskConical, Pill, BrainCircuit, TrendingUp, X } from 'lucide-react';
 
 const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
     const { t } = useTranslation();
@@ -49,6 +49,16 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                             <p className="text-sm font-bold text-gray-800">{t('model.ekf.title')}</p>
                         </div>
                         <p className="text-xs text-gray-600 leading-relaxed pl-9">{t('model.ekf.body')}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center">
+                                <TrendingUp size={14} className="text-rose-500" />
+                            </div>
+                            <p className="text-sm font-bold text-gray-800">{t('model.ou.title')}</p>
+                        </div>
+                        <p className="text-xs text-gray-600 leading-relaxed pl-9">{t('model.ou.body')}</p>
                     </div>
                 </div>
 

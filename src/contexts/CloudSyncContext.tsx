@@ -32,17 +32,25 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const weight = localStorage.getItem('hrt-weight');
     const labResults = localStorage.getItem('hrt-lab-results');
     const lang = localStorage.getItem('hrt-lang');
+    const calibrationModel = localStorage.getItem('hrt-calibration-model') || 'ekf';
+    const applyE2Raw = localStorage.getItem('hrt-apply-e2-learning-to-cpa');
+    const applyCPARaw = localStorage.getItem('hrt-apply-cpa-inhibition-to-e2');
 
     const storedLastModified = localStorage.getItem('hrt-last-modified');
     const parsedEvents = events ? JSON.parse(events) : [];
     const parsedWeight = weight ? parseFloat(weight) : 60;
     const parsedLabResults = labResults ? JSON.parse(labResults) : [];
     const resolvedLang = lang || 'en';
+    const applyE2LearningToCPA = applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true';
+    const applyCPAInhibitionToE2 = applyCPARaw === '1' || applyCPARaw?.toLowerCase() === 'true';
     const dataHash = computeDataHash({
       events: parsedEvents,
       weight: parsedWeight,
       labResults: parsedLabResults,
       lang: resolvedLang,
+      calibrationModel,
+      applyE2LearningToCPA,
+      applyCPAInhibitionToE2,
     });
     localStorage.setItem('hrt-data-hash', dataHash);
 
@@ -51,6 +59,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       weight: parsedWeight,
       labResults: parsedLabResults,
       lang: resolvedLang,
+      calibrationModel,
+      applyE2LearningToCPA,
+      applyCPAInhibitionToE2,
       lastModified: storedLastModified,
       dataHash,
     };
@@ -61,6 +72,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     weight: number;
     labResults: any[];
     lang: string;
+    calibrationModel?: string;
+    applyE2LearningToCPA?: boolean;
+    applyCPAInhibitionToE2?: boolean;
     lastModified: string;
   }) => {
     const response = await apiClient.updateUserData({
@@ -75,6 +89,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         weight: localData.weight,
         labResults: localData.labResults,
         lang: localData.lang,
+        calibrationModel: localData.calibrationModel,
+        applyE2LearningToCPA: localData.applyE2LearningToCPA,
+        applyCPAInhibitionToE2: localData.applyCPAInhibitionToE2,
       });
       setLastSyncTime(now);
       localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
@@ -217,6 +234,15 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (data?.lang) {
             localStorage.setItem('hrt-lang', data.lang);
           }
+          if (data?.calibrationModel) {
+            localStorage.setItem('hrt-calibration-model', data.calibrationModel);
+          }
+          if (data?.applyE2LearningToCPA !== undefined) {
+            localStorage.setItem('hrt-apply-e2-learning-to-cpa', data.applyE2LearningToCPA ? '1' : '0');
+          }
+          if (data?.applyCPAInhibitionToE2 !== undefined) {
+            localStorage.setItem('hrt-apply-cpa-inhibition-to-e2', data.applyCPAInhibitionToE2 ? '1' : '0');
+          }
           if (data?.lastModified || fallbackTimestamp) {
             localStorage.setItem('hrt-last-modified', data?.lastModified || fallbackTimestamp || '');
           }
@@ -225,6 +251,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             weight: data?.weight ?? localData.weight,
             labResults: data?.labResults || [],
             lang: resolvedLang,
+            calibrationModel: data?.calibrationModel || localData.calibrationModel,
+            applyE2LearningToCPA: data?.applyE2LearningToCPA ?? localData.applyE2LearningToCPA,
+            applyCPAInhibitionToE2: data?.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
           });
           localStorage.setItem('hrt-data-hash', dataHash);
 
@@ -243,6 +272,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             weight: cloudData.weight ?? localData.weight,
             labResults: cloudData.labResults || [],
             lang: cloudData.lang || localData.lang,
+            calibrationModel: cloudData.calibrationModel || '',
+            applyE2LearningToCPA: cloudData.applyE2LearningToCPA ?? localData.applyE2LearningToCPA,
+            applyCPAInhibitionToE2: cloudData.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
           });
           const localHash = localData.dataHash;
 
@@ -372,7 +404,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (e.storageArea !== localStorage) {
         return;
       }
-      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang'];
+      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2'];
       if (e.key && syncKeys.includes(e.key)) {
         triggerSync();
       }

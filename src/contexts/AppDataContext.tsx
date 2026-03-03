@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useRef, useCallback } from 'react';
 import {
     DoseEvent, LabResult, SimulationResult,
-    PersonalModelState, EKFDiagnostics,
+    PersonalModelState, EKFDiagnostics, CalibrationModel,
     runSimulation, createCalibrationInterpolator,
     replayPersonalModel, computeSimulationWithCI, initPersonalModel,
     ekfUpdatePersonalModel,
@@ -10,12 +10,16 @@ import { computeDataHash } from '../utils/dataHash';
 
 const PERSONAL_MODEL_KEY = 'hrt-personal-model';
 const APPLY_E2_LEARNING_TO_CPA_KEY = 'hrt-apply-e2-learning-to-cpa';
+const CALIBRATION_MODEL_KEY = 'hrt-calibration-model';
+const APPLY_CPA_INHIBITION_TO_E2_KEY = 'hrt-apply-cpa-inhibition-to-e2';
 
 interface SimCI {
     timeH: number[];
     e2Adjusted: number[];
     ci95Low: number[];
     ci95High: number[];
+    ci68Low: number[];
+    ci68High: number[];
     cpaAdjusted: number[];
     cpaCi95Low: number[];
     cpaCi95High: number[];
@@ -36,6 +40,10 @@ interface AppDataContextType {
     lastDiagnostics: EKFDiagnostics | null;
     applyE2LearningToCPA: boolean;
     setApplyE2LearningToCPA: React.Dispatch<React.SetStateAction<boolean>>;
+    applyCPAInhibitionToE2: boolean;
+    setApplyCPAInhibitionToE2: React.Dispatch<React.SetStateAction<boolean>>;
+    calibrationModel: CalibrationModel;
+    setCalibrationModel: React.Dispatch<React.SetStateAction<CalibrationModel>>;
     resetPersonalModel: () => void;
 }
 
@@ -99,16 +107,31 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (raw === null) return false;
         return raw === '1' || raw.toLowerCase() === 'true';
     });
+    const [calibrationModel, setCalibrationModel] = useState<CalibrationModel>(() => {
+        const raw = localStorage.getItem(CALIBRATION_MODEL_KEY);
+        return (raw === 'ou-kalman') ? 'ou-kalman' : 'ekf';
+    });
+    const [applyCPAInhibitionToE2, setApplyCPAInhibitionToE2] = useState<boolean>(() => {
+        const raw = localStorage.getItem(APPLY_CPA_INHIBITION_TO_E2_KEY);
+        if (raw === null) return false;
+        return raw === '1' || raw.toLowerCase() === 'true';
+    });
 
     const suppressLocalUpdateRef = useRef({
         events: false,
         weight: false,
         labResults: false,
+        calibrationModel: false,
+        applyE2LearningToCPA: false,
+        applyCPAInhibitionToE2: false,
     });
     const isInitialLoadRef = useRef({
         events: true,
         weight: true,
         labResults: true,
+        calibrationModel: true,
+        applyE2LearningToCPA: true,
+        applyCPAInhibitionToE2: true,
     });
 
     const markExternalUpdate = (key: keyof typeof suppressLocalUpdateRef.current) => {
@@ -147,13 +170,22 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, [labResults]);
     useEffect(() => {
         localStorage.setItem(APPLY_E2_LEARNING_TO_CPA_KEY, applyE2LearningToCPA ? '1' : '0');
+        finalizeLocalUpdate('applyE2LearningToCPA', APPLY_E2_LEARNING_TO_CPA_KEY);
     }, [applyE2LearningToCPA]);
+    useEffect(() => {
+        localStorage.setItem(APPLY_CPA_INHIBITION_TO_E2_KEY, applyCPAInhibitionToE2 ? '1' : '0');
+        finalizeLocalUpdate('applyCPAInhibitionToE2', APPLY_CPA_INHIBITION_TO_E2_KEY);
+    }, [applyCPAInhibitionToE2]);
+    useEffect(() => {
+        localStorage.setItem(CALIBRATION_MODEL_KEY, calibrationModel);
+        finalizeLocalUpdate('calibrationModel', CALIBRATION_MODEL_KEY);
+    }, [calibrationModel]);
 
     useEffect(() => {
         const lang = localStorage.getItem('hrt-lang') || 'en';
-        const hash = computeDataHash({ events, weight, labResults, lang });
+        const hash = computeDataHash({ events, weight, labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2 });
         localStorage.setItem('hrt-data-hash', hash);
-    }, [events, weight, labResults]);
+    }, [events, weight, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2]);
 
     // Update current time every minute
     useEffect(() => {
@@ -163,7 +195,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results'];
+            const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY];
             const isCloudSync = e.key === 'hrt-data-synced';
             const isOtherTabSync = e.storageArea === localStorage && e.key && syncKeys.includes(e.key);
             if (!isCloudSync && !isOtherTabSync) {
@@ -192,6 +224,40 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 }
                 const saved = localStorage.getItem('hrt-lab-results');
                 setLabResults(saved ? JSON.parse(saved) : []);
+            }
+
+            if (e.key === 'hrt-calibration-model' && isOtherTabSync) {
+                markExternalUpdate('calibrationModel');
+                const saved = localStorage.getItem(CALIBRATION_MODEL_KEY);
+                if (saved === 'ou-kalman' || saved === 'ekf') {
+                    setCalibrationModel(saved);
+                }
+            }
+
+            if (e.key === APPLY_E2_LEARNING_TO_CPA_KEY && isOtherTabSync) {
+                markExternalUpdate('applyE2LearningToCPA');
+                const saved = localStorage.getItem(APPLY_E2_LEARNING_TO_CPA_KEY);
+                if (saved !== null) setApplyE2LearningToCPA(saved === '1' || saved.toLowerCase() === 'true');
+            }
+
+            if (e.key === APPLY_CPA_INHIBITION_TO_E2_KEY && isOtherTabSync) {
+                markExternalUpdate('applyCPAInhibitionToE2');
+                const saved = localStorage.getItem(APPLY_CPA_INHIBITION_TO_E2_KEY);
+                if (saved !== null) setApplyCPAInhibitionToE2(saved === '1' || saved.toLowerCase() === 'true');
+            }
+
+            if (isCloudSync) {
+                markExternalUpdate('calibrationModel');
+                const saved = localStorage.getItem(CALIBRATION_MODEL_KEY);
+                if (saved === 'ou-kalman' || saved === 'ekf') {
+                    setCalibrationModel(saved);
+                }
+                markExternalUpdate('applyE2LearningToCPA');
+                const savedE2 = localStorage.getItem(APPLY_E2_LEARNING_TO_CPA_KEY);
+                if (savedE2 !== null) setApplyE2LearningToCPA(savedE2 === '1' || savedE2.toLowerCase() === 'true');
+                markExternalUpdate('applyCPAInhibitionToE2');
+                const savedCPA = localStorage.getItem(APPLY_CPA_INHIBITION_TO_E2_KEY);
+                if (savedCPA !== null) setApplyCPAInhibitionToE2(savedCPA === '1' || savedCPA.toLowerCase() === 'true');
             }
         };
 
@@ -231,22 +297,25 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             ? replayPersonalModel(events, weight, sorted.slice(0, -1))
             : initPersonalModel();
 
-        const { diagnostics } = ekfUpdatePersonalModel(events, weight, priorModel, lastLab);
+        const { diagnostics } = ekfUpdatePersonalModel(
+            events, weight, priorModel, lastLab,
+            labResults.length > 1 ? sorted[sorted.length - 2].timeH : undefined
+        );
         setLastDiagnostics(diagnostics);
 
         setPersonalModel(newModel);
         savePersonalModel(newModel);
     }, [events, weight, labResults]);
 
-    // Recompute CI bands whenever simulation or personal model changes
+    // Recompute CI bands whenever relevant state changes
     useEffect(() => {
-        if (!simulation || !personalModel || personalModel.observationCount === 0) {
+        if (!simulation || !personalModel || personalModel.observationCount === 0 || labResults.length === 0) {
             setSimCI(null);
             return;
         }
-        const ci = computeSimulationWithCI(simulation, events, weight, personalModel, applyE2LearningToCPA);
+        const ci = computeSimulationWithCI(simulation, events, weight, personalModel, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
         setSimCI(ci);
-    }, [simulation, personalModel, events, weight, applyE2LearningToCPA]);
+    }, [simulation, personalModel, events, weight, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2]);
 
     // Create calibration function (legacy ratio-based, still used for current-scale display)
     const calibrationFn = useMemo(() => {
@@ -275,6 +344,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         lastDiagnostics,
         applyE2LearningToCPA,
         setApplyE2LearningToCPA,
+        applyCPAInhibitionToE2,
+        setApplyCPAInhibitionToE2,
+        calibrationModel,
+        setCalibrationModel,
         resetPersonalModel,
     };
 

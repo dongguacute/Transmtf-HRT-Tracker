@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Cpu, Waves } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { LabResult, PersonalModelState, EKFDiagnostics } from '../../logic';
+import { LabResult, PersonalModelState, EKFDiagnostics, CalibrationModel } from '../../logic';
 
 interface LabViewProps {
   labResults: LabResult[];
@@ -10,6 +10,10 @@ interface LabViewProps {
   lastDiagnostics: EKFDiagnostics | null;
   applyE2LearningToCPA: boolean;
   onSetApplyE2LearningToCPA: (enabled: boolean) => void;
+  applyCPAInhibitionToE2: boolean;
+  onSetApplyCPAInhibitionToE2: (enabled: boolean) => void;
+  calibrationModel: CalibrationModel;
+  onSetCalibrationModel: (model: CalibrationModel) => void;
   onAddLabResult: () => void;
   onEditLabResult: (result: LabResult) => void;
   onClearLabResults: () => void;
@@ -108,7 +112,7 @@ const LearningPanel: React.FC<{
           <p className="text-[10px] text-gray-400 pb-2 leading-relaxed">{t('lab.learning_desc')}</p>
 
           {!hasModel ? (
-            <p className="text-[11px] text-gray-400 text-center py-4">{t('lab.learning_conv_none')}</p>
+            <p className="text-[11px] text-gray-400 text-center py-4 leading-relaxed px-2">{t('lab.learning_conv_none')}</p>
           ) : (
             <>
               {/* Outlier warning */}
@@ -190,12 +194,77 @@ const LearningPanel: React.FC<{
   );
 };
 
+// Model option card
+const ModelOption: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  desc: string;
+  pros: string[];
+  con: string;
+  selected: boolean;
+  onSelect: () => void;
+}> = ({ icon, label, desc, pros, con, selected, onSelect }) => {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full text-left p-3 rounded-xl border transition-all ${
+        selected
+          ? 'border-rose-300 bg-rose-50/60'
+          : 'border-gray-100 bg-gray-50/60 hover:border-gray-200 hover:bg-gray-50'
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border ${
+          selected ? 'bg-rose-100 border-rose-200' : 'bg-white border-gray-200'
+        }`}>
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className={`text-[13px] font-bold ${selected ? 'text-rose-700' : 'text-gray-800'}`}>{label}</span>
+            {selected && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-[9px] font-bold">
+                <CheckCircle2 size={9} />
+                {t('lab.model_active')}
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-500 leading-relaxed mb-1.5">{desc}</p>
+          <div className="space-y-0.5">
+            {pros.map((pro, i) => (
+              <p key={i} className="text-[10px] font-medium text-emerald-600 flex items-start gap-1">
+                <span className="shrink-0 mt-px">✓</span>
+                <span>{pro}</span>
+              </p>
+            ))}
+            <p className="text-[10px] font-medium text-amber-600 flex items-start gap-1">
+              <span className="shrink-0 mt-px">✗</span>
+              <span>{con}</span>
+            </p>
+          </div>
+        </div>
+        <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-1 flex items-center justify-center ${
+          selected ? 'border-rose-500 bg-rose-500' : 'border-gray-300 bg-white'
+        }`}>
+          {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+        </div>
+      </div>
+    </button>
+  );
+};
+
 const LabView: React.FC<LabViewProps> = ({
   labResults,
   personalModel,
   lastDiagnostics,
   applyE2LearningToCPA,
   onSetApplyE2LearningToCPA,
+  applyCPAInhibitionToE2,
+  onSetApplyCPAInhibitionToE2,
+  calibrationModel,
+  onSetCalibrationModel,
   onAddLabResult,
   onEditLabResult,
   onClearLabResults,
@@ -226,6 +295,36 @@ const LabView: React.FC<LabViewProps> = ({
         personalModel={personalModel}
         lastDiagnostics={lastDiagnostics}
       />
+
+      {/* E2 Calibration Model Selector */}
+      <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
+        <div>
+          <p className="text-sm font-bold text-gray-800">{t('lab.model_selector')}</p>
+          <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{t('lab.model_selector_desc')}</p>
+        </div>
+        <div className="space-y-2">
+          <ModelOption
+            icon={<Cpu size={14} className={calibrationModel === 'ekf' ? 'text-rose-500' : 'text-gray-500'} />}
+            label={t('lab.model_ekf_label')}
+            desc={t('lab.model_ekf_desc')}
+            pros={[t('lab.model_ekf_pro1'), t('lab.model_ekf_pro2')]}
+            con={t('lab.model_ekf_con')}
+            selected={calibrationModel === 'ekf'}
+            onSelect={() => onSetCalibrationModel('ekf')}
+          />
+          <ModelOption
+            icon={<Waves size={14} className={calibrationModel === 'ou-kalman' ? 'text-rose-500' : 'text-gray-500'} />}
+            label={t('lab.model_ou_label')}
+            desc={t('lab.model_ou_desc')}
+            pros={[t('lab.model_ou_pro1'), t('lab.model_ou_pro2')]}
+            con={t('lab.model_ou_con')}
+            selected={calibrationModel === 'ou-kalman'}
+            onSelect={() => onSetCalibrationModel('ou-kalman')}
+          />
+        </div>
+      </div>
+
+      {/* CPA adherence toggle */}
       <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -254,6 +353,38 @@ const LabView: React.FC<LabViewProps> = ({
         </div>
         <p className="mt-2 text-[10px] font-semibold text-gray-400">
           {applyE2LearningToCPA ? t('lab.learning_apply_cpa_on') : t('lab.learning_apply_cpa_off')}
+        </p>
+      </div>
+
+      {/* CPA→E2 clearance inhibition toggle */}
+      <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-800">{t('lab.apply_cpa_inhibition')}</p>
+            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+              {t('lab.apply_cpa_inhibition_desc')}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={applyCPAInhibitionToE2}
+            onClick={() => onSetApplyCPAInhibitionToE2(!applyCPAInhibitionToE2)}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+              applyCPAInhibitionToE2
+                ? 'bg-rose-500 border-rose-500'
+                : 'bg-gray-200 border-gray-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                applyCPAInhibitionToE2 ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+        <p className="mt-2 text-[10px] font-semibold text-gray-400">
+          {applyCPAInhibitionToE2 ? t('lab.apply_cpa_inhibition_on') : t('lab.apply_cpa_inhibition_off')}
         </p>
       </div>
 

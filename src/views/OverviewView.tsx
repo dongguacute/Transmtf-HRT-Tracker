@@ -9,6 +9,8 @@ interface SimCI {
     e2Adjusted: number[];
     ci95Low: number[];
     ci95High: number[];
+    ci68Low: number[];
+    ci68High: number[];
     cpaAdjusted: number[];
     cpaCi95Low: number[];
     cpaCi95High: number[];

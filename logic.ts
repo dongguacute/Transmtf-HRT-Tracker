@@ -135,6 +135,172 @@ export function createCalibrationInterpolator(sim: SimulationResult | null, resu
     };
 }
 
+/** Which Bayesian model to use for E2 calibration and CI bands. */
+export type CalibrationModel = 'ekf' | 'ou-kalman';
+
+// --- Bayesian OU-Kalman Calibration ---
+
+/**
+ * Parameters for the Ornstein-Uhlenbeck Kalman calibration model.
+ *
+ * The latent calibration log-factor x(t) follows an OU process:
+ *   dx(t) = Θ(μ − x(t)) dt + σ dW_t
+ *
+ * The true E2 concentration is modelled as:
+ *   c(t) = c₀(t) · exp(x(t))
+ *
+ * Lab observations in log-space:
+ *   z_i = log(y_i) − log(c₀(t_i)) = x(t_i) + ε_i,   ε_i ~ N(0, τ²)
+ */
+export interface OUCalibParams {
+    /** log-SD of measurement noise: sqrt(log(1 + CV²)). ~20% CV → 0.198. */
+    tau: number;
+    /** Mean-reversion rate (h⁻¹). Half-life = ln(2)/Theta. 7 days → ~0.00413 h⁻¹. */
+    Theta: number;
+    /** Process noise amplitude (log-scale h⁻⁰·⁵). Controls day-to-day variation. */
+    sigma: number;
+    /** Long-run log-mean (0 = unbiased, no systematic offset prior). */
+    mu: number;
+}
+
+/** Default OU calibration parameters anchored to estradiol assay literature. */
+export const OU_DEFAULT_PARAMS: OUCalibParams = {
+    tau:   0.198,                     // ~20% CV assay noise (log-space SD)
+    Theta: Math.LN2 / (7 * 24),       // 7-day mean-reversion half-life (~0.00413 h⁻¹)
+    sigma: 0.02,                      // ~9% daily variation (log-scale)
+    mu:    0.0,                       // unbiased prior
+};
+
+/**
+ * Ornstein-Uhlenbeck Kalman filter + RTS smoother for Bayesian E2 calibration.
+ *
+ * Exact OU discretisation over interval dt:
+ *   φ = exp(−Θ·dt)
+ *   m⁻ = μ + φ·(m − μ)
+ *   P⁻ = φ²·P + q,   q = P∞·(1 − φ²),   P∞ = σ²/(2Θ)
+ *
+ * Kalman update at observation z:
+ *   K = P⁻ / (P⁻ + τ²)
+ *   m = m⁻ + K·(z − m⁻)
+ *   P = (1 − K)·P⁻
+ *
+ * RTS smoother (backward pass):
+ *   G_i = P_i · φ_i / P⁻_{i+1}
+ *   m_s[i] = m[i] + G_i · (m_s[i+1] − m⁻[i+1])
+ *   P_s[i] = P[i] + G_i² · (P_s[i+1] − P⁻[i+1])
+ *
+ * @returns posterior mean m[] and variance P[] aligned with sim.timeH.
+ */
+export function buildOUKalmanCalibration(
+    sim: SimulationResult,
+    labResults: LabResult[],
+    params: OUCalibParams = OU_DEFAULT_PARAMS
+): { m: number[]; P: number[] } {
+    const n = sim.timeH.length;
+    if (n === 0) return { m: [], P: [] };
+
+    const { tau, Theta, sigma, mu } = params;
+    const tau2  = tau * tau;
+    const P_inf = (sigma * sigma) / (2 * Theta);   // stationary variance of OU
+    const EPS   = 0.1;                              // concentration floor (pg/mL)
+
+    // Build log-space observations: z_i = log(y_i) − log(c₀(t_i))
+    const tMin = sim.timeH[0];
+    const tMax = sim.timeH[n - 1];
+    const labs: { timeH: number; z: number }[] = [];
+    for (const lab of labResults) {
+        // Skip labs outside the simulation window — interpolation would clamp to
+        // the edge value, producing a biased z that propagates via RTS smoothing.
+        if (lab.timeH < tMin || lab.timeH > tMax) continue;
+        const obs = convertToPgMl(lab.concValue, lab.unit);
+        if (obs <= 0) continue;
+        const c0 = interpolateConcentration_E2(sim, lab.timeH);
+        if (c0 === null || c0 < EPS) continue;
+        const z = Math.log(obs) - Math.log(c0);
+        // Reject extreme outliers (> ±3.5 log-units ≈ ×33 ratio)
+        if (!Number.isFinite(z) || Math.abs(z) > 3.5) continue;
+        labs.push({ timeH: lab.timeH, z });
+    }
+    labs.sort((a, b) => a.timeH - b.timeH);
+
+    // Build combined time grid: sim.timeH ∪ {lab.timeH} — sorted unique
+    const gridSet = new Set<number>(sim.timeH);
+    for (const lab of labs) gridSet.add(lab.timeH);
+    const grid = Array.from(gridSet).sort((a, b) => a - b);
+    const ng = grid.length;
+
+    // O(1) lookup from time → grid index
+    const gridIndex = new Map<number, number>();
+    for (let i = 0; i < ng; i++) gridIndex.set(grid[i], i);
+
+    // ── Forward Kalman filter ──────────────────────────────────────────
+    const mFwd  = new Float64Array(ng).fill(mu);
+    const PFwd  = new Float64Array(ng).fill(P_inf);
+    const mPred = new Float64Array(ng).fill(mu);
+    const PPred = new Float64Array(ng).fill(P_inf);
+
+    let m = mu;
+    let P = P_inf;
+    let labPtr = 0;
+
+    for (let i = 0; i < ng; i++) {
+        // Predict (OU transition from previous time)
+        if (i > 0) {
+            const dt = grid[i] - grid[i - 1];
+            if (dt > 0) {
+                const phi = Math.exp(-Theta * dt);
+                const q   = P_inf * (1 - phi * phi);
+                m = mu + phi * (m - mu);
+                P = phi * phi * P + q;
+            }
+        }
+        mPred[i] = m;
+        PPred[i] = P;
+
+        // Update with any lab(s) at exactly this grid time
+        while (labPtr < labs.length && labs[labPtr].timeH === grid[i]) {
+            const S = P + tau2;
+            const K = P / S;
+            m = m + K * (labs[labPtr].z - m);
+            P = (1 - K) * P;
+            labPtr++;
+        }
+        mFwd[i] = m;
+        PFwd[i] = Math.max(P, 1e-12);
+    }
+
+    // ── RTS smoother (backward pass) ──────────────────────────────────
+    const mS = Float64Array.from(mFwd);
+    const PS = Float64Array.from(PFwd);
+
+    for (let i = ng - 2; i >= 0; i--) {
+        const dt = grid[i + 1] - grid[i];
+        if (dt <= 0) continue;
+        const phi = Math.exp(-Theta * dt);
+        // G = P_i · φ / P⁻_{i+1}  (Kalman smoother gain)
+        const G = PPred[i + 1] > 1e-12 ? PFwd[i] * phi / PPred[i + 1] : 0;
+        mS[i] = mFwd[i] + G * (mS[i + 1] - mPred[i + 1]);
+        PS[i] = Math.max(PFwd[i] + G * G * (PS[i + 1] - PPred[i + 1]), 1e-9);
+    }
+
+    // ── Extract at sim.timeH positions (all sim times are in gridSet) ─
+    const outM = new Array<number>(n);
+    const outP = new Array<number>(n);
+    for (let j = 0; j < n; j++) {
+        const idx = gridIndex.get(sim.timeH[j]);
+        if (idx !== undefined) {
+            outM[j] = mS[idx];
+            outP[j] = PS[idx];
+        } else {
+            // Defensive fallback (should never occur)
+            outM[j] = mu;
+            outP[j] = P_inf;
+        }
+    }
+
+    return { m: outM, P: outP };
+}
+
 // --- Constants & Parameters (PKparameter.swift & PKcore.swift) ---
 
 const CorePK = {
@@ -705,6 +871,31 @@ const EKF_CHI2_95 = 3.841;               // chi-squared 95th percentile, 1 DOF
 const EKF_DELTA_K = 0.01;                // finite-difference step for theta_k
 const EKF_CI_MAX_E2 = 5000;               // chart safety cap (pg/mL)
 const EKF_CI_MAX_CPA = 500;               // chart safety cap (ng/mL)
+/** Irreducible predictive log-SD (assay CV ~5–15% + biological variability ~10–20% + model error).
+ *  σ = 0.27 → 95% predictive band ≈ ×/÷ 1.70.  Range 0.25–0.32 is defensible. */
+const EKF_SIGMA_RESIDUAL_LOG = 0.27;
+/** Reference period for time-scaled Q drift (30 days). EKF_Q is calibrated for this interval. */
+const EKF_Q_REF_PERIOD_H = 30 * 24;
+
+/**
+ * CPA → E2 clearance inhibition model parameters (Chou–Talalay / Hill).
+ *
+ * Scientific basis: CPA is metabolised by CYP3A4; competitive saturation of
+ * CYP3A4 may reduce E2 first-pass clearance when CPA concentrations are high.
+ * Parameters are conservative estimates — clinical magnitude is debated.
+ * Feature is off by default; enabled via applyCPAInhibitionToE2.
+ *
+ * Note on saturation: at typical HRT doses (10–50 mg/day oral CPA), steady-state
+ * Cavg ≈ 24–121 ng/mL (using 2-comp model). With IC50=50 ng/mL and Emax=0.20,
+ * inhibition ranges from ~0.09 to ~0.17 — avoiding premature saturation.
+ * IC50 was deliberately set above the typical HRT trough (~5–15 ng/mL) to keep
+ * the model in the dynamic (non-saturated) range for clinically relevant doses.
+ */
+const CPA_E2_INHIBITION = {
+    Emax: 0.20,   // maximum fraction of E2 clearance inhibited (20%)
+    IC50: 50.0,   // CPA ng/mL for 50% of Emax — above typical HRT trough to stay in dynamic range
+    n:    1.0,    // Hill coefficient (1 = Michaelis-Menten)
+};
 
 /** Initialise a new personal model state at the population prior. */
 export function initPersonalModel(): PersonalModelState {
@@ -876,7 +1067,8 @@ export function ekfUpdatePersonalModel(
     events: DoseEvent[],
     weight: number,
     state: PersonalModelState,
-    labResult: LabResult
+    labResult: LabResult,
+    prevLabTimeH?: number   // previous lab's timeH for time-scaled Q drift
 ): { newState: PersonalModelState; diagnostics: EKFDiagnostics } {
     const hasDoseBeforeLab = events.some(ev =>
         ev.timeH <= labResult.timeH &&
@@ -888,11 +1080,17 @@ export function ekfUpdatePersonalModel(
     const obsPGmL = convertToPgMl(labResult.concValue, labResult.unit);
     const y = Math.log(Math.max(obsPGmL, EKF_EPS));
 
-    // --- Prediction step (parameter random walk) ---
+    // --- Prediction step (time-scaled parameter random walk) ---
+    // Q is scaled by elapsed time relative to EKF_Q_REF_PERIOD_H (30 days).
+    // This prevents over-shrinkage on long gaps and over-inflation on short gaps.
     const theta = state.thetaMean.slice() as [number, number];
+    const dtH = (prevLabTimeH !== undefined)
+        ? Math.max(24, labResult.timeH - prevLabTimeH)
+        : EKF_Q_REF_PERIOD_H;
+    const qScale = dtH / EKF_Q_REF_PERIOD_H;
     const P: [[number, number], [number, number]] = [
-        [state.thetaCov[0][0] + state.Q[0][0], state.thetaCov[0][1] + state.Q[0][1]],
-        [state.thetaCov[1][0] + state.Q[1][0], state.thetaCov[1][1] + state.Q[1][1]],
+        [state.thetaCov[0][0] + state.Q[0][0] * qScale, state.thetaCov[0][1] + state.Q[0][1] * qScale],
+        [state.thetaCov[1][0] + state.Q[1][0] * qScale, state.thetaCov[1][1] + state.Q[1][1] * qScale],
     ];
 
     // --- Predicted observation ---
@@ -1037,59 +1235,194 @@ export function replayPersonalModel(
 ): PersonalModelState {
     let state = initPersonalModel();
     const sorted = [...labResults].sort((a, b) => a.timeH - b.timeH);
-    for (const lab of sorted) {
-        const { newState } = ekfUpdatePersonalModel(events, weight, state, lab);
+    for (let i = 0; i < sorted.length; i++) {
+        const prevTimeH = i > 0 ? sorted[i - 1].timeH : undefined;
+        const { newState } = ekfUpdatePersonalModel(events, weight, state, sorted[i], prevTimeH);
         state = newState;
     }
     return state;
 }
 
 /**
- * Compute a full simulation curve adjusted by the personal model theta,
- * plus 95% confidence interval bands.
+ * Compute the fraction of E2 clearance inhibited by CPA at a given concentration.
  *
- * Returns arrays aligned with sim.timeH:
- *   - e2Adjusted: E2 prediction from learned parameters (pg/mL)
- *   - ci95Low / ci95High: lower/upper 95% CI bounds (pg/mL)
+ * Uses the Chou–Talalay / Hill median-effect model:
+ *   f_a = Emax · CPA^n / (IC50^n + CPA^n)
+ *
+ * Returns a value in [0, Emax]. Pass into computeSimulationWithCI via
+ * applyCPAInhibitionToE2 = true to apply the post-hoc E2 scaling.
+ *
+ * @param cpaNgML  CPA plasma concentration in ng/mL
+ * @param params   Hill model parameters (defaults to CPA_E2_INHIBITION)
+ */
+export function computeCPAE2InhibitionFactor(
+    cpaNgML: number,
+    params = CPA_E2_INHIBITION
+): number {
+    if (!Number.isFinite(cpaNgML) || cpaNgML <= 0) return 0;
+    const { Emax, IC50, n } = params;
+    if (!Number.isFinite(Emax) || Emax <= 0 || !Number.isFinite(IC50) || IC50 <= 0 || !Number.isFinite(n) || n <= 0) return 0;
+    const Dn    = Math.pow(cpaNgML, n);
+    const IC50n = Math.pow(IC50, n);
+    // Clamp result to [0, Emax) to guarantee scale = 1/(1-f) is always well-defined
+    return Math.min(Math.max(0, Emax * Dn / (IC50n + Dn)), Emax * 0.9999);
+}
+
+/**
+ * Compute a full simulation curve with Bayesian OU-Kalman calibration for E2
+ * and EKF-based adherence scaling for CPA.
+ *
+ * E2 calibration uses either:
+ *  - 'ekf': EKF-learned (theta_s, theta_k) parameters applied to the PK model;
+ *           CI from linearised parameter uncertainty H^T P H.
+ *  - 'ou-kalman': OU Kalman filter + RTS smoother log-factor x(t);
+ *                 c(t) = c₀(t)·exp(x(t)), bands at ±σ (68%) and ±1.96σ (95%).
+ *
+ * CPA adherence scaling uses EKF theta[0] in both modes.
+ *
+ * @param labResults            Raw lab results needed by the OU-Kalman filter.
+ * @param calibrationModel      Which E2 model to use (default 'ekf').
+ * @param applyCPAInhibitionToE2 When true, applies Chou-Talalay CPA→E2 clearance
+ *                               inhibition as a post-hoc multiplicative correction
+ *                               (default false — experimental, off until validated).
  */
 export function computeSimulationWithCI(
     sim: SimulationResult,
     events: DoseEvent[],
     weight: number,
     state: PersonalModelState,
-    applyE2LearningToCPA: boolean = true
+    applyE2LearningToCPA: boolean = true,
+    labResults: LabResult[] = [],
+    calibrationModel: CalibrationModel = 'ekf',
+    applyCPAInhibitionToE2: boolean = false
 ): {
     timeH: number[];
     e2Adjusted: number[];
     ci95Low: number[];
     ci95High: number[];
+    ci68Low: number[];
+    ci68High: number[];
     cpaAdjusted: number[];
     cpaCi95Low: number[];
     cpaCi95High: number[];
 } {
     const n = sim.timeH.length;
+    if (n === 0) {
+        return { timeH: [], e2Adjusted: [], ci95Low: [], ci95High: [], ci68Low: [], ci68High: [], cpaAdjusted: [], cpaCi95Low: [], cpaCi95High: [] };
+    }
     const theta = state.thetaMean;
     const P = state.thetaCov;
 
     const clampCI = (low: number, high: number, hardMax: number): [number, number] => {
         const lo = Number.isFinite(low) ? Math.max(0, low) : 0;
         const hi = Number.isFinite(high) ? Math.max(lo, high) : lo;
-        const loC = Math.min(lo, hardMax);
-        const hiC = Math.min(hi, hardMax);
-        return [Math.min(loC, hiC), hiC];
+        return [Math.min(lo, hardMax), Math.min(hi, hardMax)];
     };
 
-    // Sample at ~100 representative time points, then interpolate
+    // ── E2: choose calibration model ──────────────────────────────────────────
+    const e2Adjusted = new Array<number>(n);
+    const ci95Low    = new Array<number>(n);
+    const ci95High   = new Array<number>(n);
+    const ci68Low    = new Array<number>(n);
+    const ci68High   = new Array<number>(n);
+
+    if (calibrationModel === 'ou-kalman') {
+        // OU-Kalman: posterior mean m(t) and variance P(t) from forward Kalman + RTS smoother.
+        // c(t) = c₀(t) · exp(m(t))  [median prediction]
+        // CI bands are symmetric in log-space → lognormal in concentration space.
+        const ou = buildOUKalmanCalibration(sim, labResults);
+
+        for (let i = 0; i < n; i++) {
+            const c0  = Math.max(sim.concPGmL_E2[i], EKF_EPS);
+            const mi  = ou.m[i];
+            const std = Math.sqrt(Math.max(0, ou.P[i]));
+
+            // Jensen mean correction: E[c] = c₀·exp(m + P/2) (lognormal mean > median)
+            e2Adjusted[i] = Math.min(c0 * Math.exp(mi + 0.5 * ou.P[i]), EKF_CI_MAX_E2);
+
+            const [lo95, hi95] = clampCI(
+                c0 * Math.exp(mi - 1.96 * std),
+                c0 * Math.exp(mi + 1.96 * std),
+                EKF_CI_MAX_E2
+            );
+            ci95Low[i]  = lo95;
+            ci95High[i] = hi95;
+
+            const [lo68, hi68] = clampCI(
+                c0 * Math.exp(mi - std),
+                c0 * Math.exp(mi + std),
+                EKF_CI_MAX_E2
+            );
+            ci68Low[i]  = lo68;
+            ci68High[i] = hi68;
+        }
+    } else {
+        // EKF: use learned (theta_s, theta_k) parameters to shift the PK curve.
+        // CI from linearised parameter uncertainty H^T P H (where H=[1, ∂logC/∂theta_k]).
+        // Central curve applies Jensen mean correction: E[C] = C_MAP·exp(σ²_param/2),
+        // which compensates for the lognormal mean > median bias under parameter uncertainty.
+        // Sampled at ~100 points and linearly interpolated.
+        const ekfStep = Math.max(1, Math.floor(n / 100));
+        const ekfIndices: number[] = [];
+        for (let i = 0; i < n; i += ekfStep) ekfIndices.push(i);
+        if (ekfIndices[ekfIndices.length - 1] !== n - 1) ekfIndices.push(n - 1);
+
+        interface EKFSample {
+            idx: number;
+            e2Adj: number;   // Jensen mean-corrected central curve (E[C])
+            ci95Lo: number;  // 5th percentile of posterior predictive (anchored to MAP)
+            ci95Hi: number;  // 95th percentile
+            ci68Lo: number;  // 16th percentile
+            ci68Hi: number;  // 84th percentile
+        }
+        const ekfSamples: EKFSample[] = [];
+
+        for (const idx of ekfIndices) {
+            const timeH  = sim.timeH[idx];
+            const e2Base = computeE2AtTimeWithTheta(events, weight, timeH, theta);
+            const yhat   = Math.log(Math.max(e2Base, EKF_EPS));
+            // Jacobian H[1] = ∂log(C)/∂theta_k via forward finite difference
+            const thetaKPlus: [number, number] = [theta[0], theta[1] + EKF_DELTA_K];
+            const yhatPlus = Math.log(Math.max(computeE2AtTimeWithTheta(events, weight, timeH, thetaKPlus), EKF_EPS));
+            const H1 = (yhatPlus - yhat) / EKF_DELTA_K;
+            // σ²_param = H^T P H (parameter uncertainty only)
+            const rawSigma2Param = P[0][0] + 2 * H1 * P[0][1] + H1 * H1 * P[1][1];
+            const sigma2Param = (Number.isFinite(rawSigma2Param) && rawSigma2Param > 0) ? rawSigma2Param : 0;
+            // σ²_total = σ²_param + σ²_residual (add irreducible assay + biological noise)
+            const sigmaTotal = Math.sqrt(sigma2Param + EKF_SIGMA_RESIDUAL_LOG * EKF_SIGMA_RESIDUAL_LOG);
+            // Jensen mean correction: E[C] = C_MAP × exp(σ²_param / 2)
+            const e2AdjMean = Math.min(e2Base * Math.exp(0.5 * sigma2Param), EKF_CI_MAX_E2);
+            // CI percentile bounds are anchored to the MAP (lognormal median)
+            const [lo95, hi95] = clampCI(e2Base * Math.exp(-1.96 * sigmaTotal), e2Base * Math.exp(1.96 * sigmaTotal), EKF_CI_MAX_E2);
+            const [lo68, hi68] = clampCI(e2Base * Math.exp(-sigmaTotal), e2Base * Math.exp(sigmaTotal), EKF_CI_MAX_E2);
+            ekfSamples.push({ idx, e2Adj: e2AdjMean, ci95Lo: lo95, ci95Hi: hi95, ci68Lo: lo68, ci68Hi: hi68 });
+        }
+
+        for (let j = 0; j < ekfSamples.length; j++) {
+            const a = ekfSamples[j];
+            const b = ekfSamples[j + 1] ?? a;
+            const span = b.idx - a.idx;
+            for (let i = a.idx; i <= b.idx; i++) {
+                const frac = span > 0 ? (i - a.idx) / span : 0;
+                e2Adjusted[i] = Math.min(Math.max(0, a.e2Adj + (b.e2Adj - a.e2Adj) * frac), EKF_CI_MAX_E2);
+                ci95Low[i]  = a.ci95Lo + (b.ci95Lo - a.ci95Lo) * frac;
+                ci95High[i] = a.ci95Hi + (b.ci95Hi - a.ci95Hi) * frac;
+                ci68Low[i]  = a.ci68Lo + (b.ci68Lo - a.ci68Lo) * frac;
+                ci68High[i] = a.ci68Hi + (b.ci68Hi - a.ci68Hi) * frac;
+            }
+        }
+    }
+
+    // ── CPA: EKF adherence-scaled prediction + population PK uncertainty ──────
+    // theta[0] (E2 amplitude) proxies adherence for CPA dose scaling.
+    // theta[1] (clearance) is NOT applied to CPA — no CPA blood measurements.
     const step = Math.max(1, Math.floor(n / 100));
     const sampledIndices: number[] = [];
     for (let i = 0; i < n; i += step) sampledIndices.push(i);
     if (sampledIndices[sampledIndices.length - 1] !== n - 1) sampledIndices.push(n - 1);
 
-    const sampledResults: {
+    const cpaSamples: {
         idx: number;
-        e2Adj: number;
-        ci95Low: number;
-        ci95High: number;
         cpaAdj: number;
         cpaCi95Low: number;
         cpaCi95High: number;
@@ -1097,82 +1430,70 @@ export function computeSimulationWithCI(
 
     for (const idx of sampledIndices) {
         const timeH = sim.timeH[idx];
-        const pred = computeE2AtTimeWithTheta(events, weight, timeH, theta);
-
-        // Finite-difference gradient ∂yhat/∂theta_k
-        const predK = computeE2AtTimeWithTheta(events, weight, timeH,
-            [theta[0], theta[1] + EKF_DELTA_K]);
-        const yhat = Math.log(Math.max(pred, EKF_EPS));
-        const yhatK = Math.log(Math.max(predK, EKF_EPS));
-        const hK = (yhatK - yhat) / EKF_DELTA_K;
-
-        // Parameter uncertainty: H = [1, hK]
-        const varYhat = P[0][0] + 2*P[0][1]*hK + P[1][1]*hK*hK;
-        const totalVar = varYhat + state.Rlog;
-        const std = Math.sqrt(Math.max(0, totalVar));
-
-        const e2CiRawLow = Math.exp(yhat - 1.96 * std);
-        const e2CiRawHigh = Math.exp(yhat + 1.96 * std);
-        const [e2CiLow, e2CiHigh] = clampCI(e2CiRawLow, e2CiRawHigh, EKF_CI_MAX_E2);
 
         const cpaPred = applyE2LearningToCPA
             ? computeCPAAtTimeWithTheta(events, weight, timeH, theta)   // adherence-scaled
-            : computeCPAAtTimeWithTheta(events, weight, timeH, [0, 0]); // population mean (no adherence adj.)
+            : computeCPAAtTimeWithTheta(events, weight, timeH, [0, 0]); // population mean
 
-        // CPA CI: population PK uncertainty + optional adherence uncertainty from E2 learning.
-        // Unlike E2, CPA has no direct measurements, so we do NOT use the EKF Jacobian
-        // (which would incorrectly assume E2 and CPA share the same clearance variation).
-        // Instead: var(log CPA) = adherence uncertainty (P[0][0] when enabled) + popLogVar.
-        // CI is always computed (even near floor) to avoid discontinuous bands.
-        let cpaCiLow = 0;
-        let cpaCiHigh = 0;
+        // CPA CI: adherence uncertainty (P[0][0] when enabled) + population PK variance.
         const adherenceVar = applyE2LearningToCPA ? Math.max(0, P[0][0]) : 0;
-        const varLogCPA = adherenceVar + CPA_2COMP_PK.popLogVar;
-        const stdCPA = Math.sqrt(Math.max(0, varLogCPA));
-        const yhatCPA = Math.log(Math.max(cpaPred, EKF_EPS_CPA));
-        const cpaCiRawLow  = Math.exp(yhatCPA - 1.96 * stdCPA);
-        const cpaCiRawHigh = Math.exp(yhatCPA + 1.96 * stdCPA);
-        [cpaCiLow, cpaCiHigh] = clampCI(cpaCiRawLow, cpaCiRawHigh, EKF_CI_MAX_CPA);
+        const varLogCPA    = adherenceVar + CPA_2COMP_PK.popLogVar;
+        const stdCPA       = Math.sqrt(Math.max(0, varLogCPA));
+        const yhatCPA      = Math.log(Math.max(cpaPred, EKF_EPS_CPA));
+        const [cpaCiLow, cpaCiHigh] = clampCI(
+            Math.exp(yhatCPA - 1.96 * stdCPA),
+            Math.exp(yhatCPA + 1.96 * stdCPA),
+            EKF_CI_MAX_CPA
+        );
 
-        sampledResults.push({
-            idx,
-            e2Adj: pred,
-            ci95Low: e2CiLow,
-            ci95High: e2CiHigh,
-            cpaAdj: cpaPred,
-            cpaCi95Low: cpaCiLow,
-            cpaCi95High: cpaCiHigh,
-        });
+        cpaSamples.push({ idx, cpaAdj: cpaPred, cpaCi95Low: cpaCiLow, cpaCi95High: cpaCiHigh });
     }
 
-    // Linear interpolation across all n points
-    const e2Adjusted = new Array<number>(n).fill(0);
-    const ci95Low = new Array<number>(n).fill(0);
-    const ci95High = new Array<number>(n).fill(0);
-    // CPA arrays are always filled — 2-compartment model is always active
-    const cpaAdjusted  = new Array<number>(n).fill(0);
-    const cpaCi95Low   = new Array<number>(n).fill(0);
-    const cpaCi95High  = new Array<number>(n).fill(0);
+    // Linear interpolation for CPA across all n points
+    const cpaAdjusted = new Array<number>(n).fill(0);
+    const cpaCi95Low  = new Array<number>(n).fill(0);
+    const cpaCi95High = new Array<number>(n).fill(0);
 
-    for (let j = 0; j < sampledResults.length; j++) {
-        const a = sampledResults[j];
-        const b = sampledResults[j + 1] ?? a;
+    for (let j = 0; j < cpaSamples.length; j++) {
+        const a = cpaSamples[j];
+        const b = cpaSamples[j + 1] ?? a;
         const span = b.idx - a.idx;
         for (let i = a.idx; i <= b.idx; i++) {
             const frac = span > 0 ? (i - a.idx) / span : 0;
-            e2Adjusted[i] = a.e2Adj + (b.e2Adj - a.e2Adj) * frac;
-            ci95Low[i] = a.ci95Low + (b.ci95Low - a.ci95Low) * frac;
-            ci95High[i] = a.ci95High + (b.ci95High - a.ci95High) * frac;
             cpaAdjusted[i]  = a.cpaAdj     + (b.cpaAdj     - a.cpaAdj)     * frac;
             cpaCi95Low[i]   = a.cpaCi95Low  + (b.cpaCi95Low  - a.cpaCi95Low)  * frac;
             cpaCi95High[i]  = a.cpaCi95High + (b.cpaCi95High - a.cpaCi95High) * frac;
         }
     }
 
-    return { timeH: sim.timeH, e2Adjusted, ci95Low, ci95High, cpaAdjusted, cpaCi95Low, cpaCi95High };
-}
+    // ── Optional: CPA → E2 clearance inhibition (Chou-Talalay Hill model) ──────
+    // Applies a post-hoc multiplicative correction to E2 and its CI bands.
+    // Steady-state approximation: lower clearance → concentration ∝ 1 / (1 − f).
+    // Default off (experimental); enable when supported by user's CPA blood levels.
+    if (applyCPAInhibitionToE2) {
+        for (let i = 0; i < n; i++) {
+            // Use adherence-adjusted CPA curve (consistent with displayed CPA trajectory)
+            const f     = computeCPAE2InhibitionFactor(cpaAdjusted[i]);
+            const scale = 1 / (1 - f); // f ∈ [0, 0.25] → scale ∈ [1.0, 1.333]
+            e2Adjusted[i]  = Math.min(e2Adjusted[i]  * scale, EKF_CI_MAX_E2);
+            // Scale all CI bounds then re-clamp both lower and upper to avoid ordering violations
+            const s95Lo = ci95Low[i]  * scale;
+            const s95Hi = Math.min(ci95High[i] * scale, EKF_CI_MAX_E2);
+            const s68Lo = ci68Low[i]  * scale;
+            const s68Hi = Math.min(ci68High[i] * scale, EKF_CI_MAX_E2);
+            ci95Low[i]  = Math.min(s95Lo, s95Hi);
+            ci95High[i] = s95Hi;
+            ci68Low[i]  = Math.min(s68Lo, s68Hi);
+            ci68High[i] = s68Hi;
+        }
+    }
 
-// --- Encryption Utils ---
+    return {
+        timeH: sim.timeH,
+        e2Adjusted, ci95Low, ci95High, ci68Low, ci68High,
+        cpaAdjusted, cpaCi95Low, cpaCi95High,
+    };
+}
 
 async function generateKey(password: string, salt: Uint8Array) {
     const enc = new TextEncoder();

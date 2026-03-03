@@ -18,6 +18,10 @@ const LabPage: React.FC = () => {
         lastDiagnostics,
         applyE2LearningToCPA,
         setApplyE2LearningToCPA,
+        applyCPAInhibitionToE2,
+        setApplyCPAInhibitionToE2,
+        calibrationModel,
+        setCalibrationModel,
     } = useAppData();
 
     return (
@@ -27,6 +31,10 @@ const LabPage: React.FC = () => {
             lastDiagnostics={lastDiagnostics}
             applyE2LearningToCPA={applyE2LearningToCPA}
             onSetApplyE2LearningToCPA={setApplyE2LearningToCPA}
+            applyCPAInhibitionToE2={applyCPAInhibitionToE2}
+            onSetApplyCPAInhibitionToE2={setApplyCPAInhibitionToE2}
+            calibrationModel={calibrationModel}
+            onSetCalibrationModel={setCalibrationModel}
             onAddLabResult={onAddLabResult}
             onEditLabResult={onEditLabResult}
             onClearLabResults={onClearLabResults}

@@ -3,6 +3,9 @@ type HashableData = {
     weight: number;
     labResults: unknown[];
     lang?: string;
+    calibrationModel?: string;
+    applyE2LearningToCPA?: boolean;
+    applyCPAInhibitionToE2?: boolean;
 };
 
 const stableStringify = (value: unknown): string => {
@@ -35,6 +38,9 @@ export const computeDataHash = (data: HashableData): string => {
         weight: Number.isFinite(data.weight) ? data.weight : 0,
         labResults: data.labResults || [],
         lang: data.lang || '',
+        calibrationModel: data.calibrationModel || '',
+        applyE2LearningToCPA: data.applyE2LearningToCPA ?? false,
+        applyCPAInhibitionToE2: data.applyCPAInhibitionToE2 ?? false,
     };
     return hashString(stableStringify(payload));
 };
