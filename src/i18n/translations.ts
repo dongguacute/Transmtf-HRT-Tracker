@@ -100,6 +100,8 @@ export const TRANSLATIONS_BASE = {
         "btn.edit": "编辑",
         "btn.ok": "确定",
         "btn.copy": "复制",
+        "btn.close": "关闭",
+        "btn.delete": "删除",
 
         "dialog.confirm_title": "确认",
         "dialog.alert_title": "提示",
@@ -669,6 +671,8 @@ export const TRANSLATIONS_BASE = {
         "btn.edit": "Edit",
         "btn.ok": "OK",
         "btn.copy": "Copy",
+        "btn.close": "Close",
+        "btn.delete": "Delete",
 
         "dialog.confirm_title": "Confirm",
         "dialog.alert_title": "Alert",
@@ -1284,6 +1288,8 @@ export const TRANSLATIONS_BASE = {
         "btn.edit": "Редактировать",
         "btn.ok": "ОК",
         "btn.copy": "Копировать",
+        "btn.close": "Закрыть",
+        "btn.delete": "Удалить",
 
         "dialog.confirm_title": "Подтверждение",
         "dialog.alert_title": "Внимание",
@@ -1565,6 +1571,8 @@ export const TRANSLATIONS = {
         "btn.edit": "編輯",
         "btn.ok": "確定",
         "btn.copy": "複製",
+        "btn.close": "關閉",
+        "btn.delete": "刪除",
 
         "dialog.confirm_title": "確認",
         "dialog.alert_title": "提示",
@@ -1887,6 +1895,8 @@ export const TRANSLATIONS = {
         "btn.edit": "編輯",
         "btn.ok": "確定",
         "btn.copy": "複製",
+        "btn.close": "關閉",
+        "btn.delete": "刪除",
 
         "dialog.confirm_title": "確認",
         "dialog.alert_title": "提示",
@@ -2160,6 +2170,8 @@ export const TRANSLATIONS = {
         "btn.edit": "Редагувати",
         "btn.ok": "OK",
         "btn.copy": "Копіювати",
+        "btn.close": "Закрити",
+        "btn.delete": "Видалити",
 
         "dialog.confirm_title": "Підтвердження",
         "dialog.alert_title": "Увага",
@@ -2473,6 +2485,8 @@ export const TRANSLATIONS = {
         "btn.edit": "編集",
         "btn.ok": "OK",
         "btn.copy": "コピー",
+        "btn.close": "閉じる",
+        "btn.delete": "削除",
 
         "dialog.confirm_title": "確認",
         "dialog.alert_title": "お知らせ",

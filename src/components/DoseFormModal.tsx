@@ -6,6 +6,7 @@ import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
 import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getBioavailabilityMultiplier, getToE2Factor } from '../../logic';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface DoseTemplate {
     id: string;
@@ -424,6 +425,8 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         return { config: cfg, level, value, showRateHint: false as const };
     }, [route, patchMode, patchRate, e2Dose, ester]);
 
+    const dialogRef = useFocusTrap(isOpen, onClose);
+
     if (!isOpen) return null;
 
     const tierKey = SL_TIER_ORDER[slTier] || "standard";
@@ -454,13 +457,22 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
     const guideBadgeClass = doseGuide?.level ? LEVEL_BADGE_STYLES[doseGuide.level] : "";
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
-            <div className="relative bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
+        <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
+            aria-hidden="true"
+        >
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="dose-modal-title"
+                className="relative bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300"
+            >
                 <div className="p-6 md:p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
-                    <h3 className="text-xl font-semibold text-gray-900">
+                    <h3 id="dose-modal-title" className="text-xl font-semibold text-gray-900">
                         {eventToEdit ? t('modal.dose.edit_title') : t('modal.dose.add_title')}
                     </h3>
-                    <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
@@ -477,8 +489,9 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                 onChange={e => setDateStr(e.target.value)} 
                                 className="text-xl font-bold text-gray-900 font-mono bg-transparent border-none p-0 focus:ring-0 focus:outline-none"
                             />
-                            <button 
+                            <button
                                 onClick={() => dateInputRef.current?.focus()}
+                                aria-label={t('field.time')}
                                 className="p-2 bg-gray-100 hover:bg-pink-100 text-gray-600 hover:text-pink-600 rounded-lg transition-colors"
                             >
                                 <Calendar size={18} />
@@ -800,6 +813,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                 onClose();
                                 if (onDelete) onDelete(eventToEdit.id);
                             }}
+                            aria-label={t('btn.delete')}
                             className="w-16 h-14 flex items-center justify-center bg-red-50 text-red-500 rounded-xl hover:bg-red-100 border border-red-100 transition-colors"
                         >
                             <Trash2 size={20} />
@@ -808,7 +822,8 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     {!eventToEdit && (
                         <button
                             onClick={() => setShowPanel(p => !p)}
-                            title={t('template.title')}
+                            aria-label={t('template.title')}
+                            aria-expanded={showPanel}
                             className={`w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0 ${showPanel ? 'bg-pink-50 border-pink-200 text-pink-400' : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-pink-50 hover:text-pink-400 hover:border-pink-200'}`}
                         >
                             <Bookmark size={18} fill={showPanel ? 'currentColor' : 'none'} />

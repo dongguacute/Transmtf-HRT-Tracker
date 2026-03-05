@@ -3,6 +3,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { LabResult } from '../logic';
 import { X, Calendar, Activity, TestTube, FileText, Trash2, Check, FlaskConical } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface LabResultModalProps {
     isOpen: boolean;
@@ -75,19 +76,26 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
         }
     };
 
+    const dialogRef = useFocusTrap(isOpen, onClose);
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
-            <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in slide-in-from-bottom duration-300">
-                
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200" aria-hidden="true">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="lab-modal-title"
+                className="bg-white rounded-t-3xl md:rounded-3xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in slide-in-from-bottom duration-300"
+            >
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
-                    <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <h2 id="lab-modal-title" className="text-lg font-bold text-gray-900 flex items-center gap-2">
                         <FlaskConical className="text-teal-500" size={20} />
                         {resultToEdit ? t('lab.edit_title') : t('lab.add_title')}
                     </h2>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
@@ -155,6 +163,7 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                     {resultToEdit && onDelete && (
                         <button
                             onClick={handleDelete}
+                            aria-label={t('btn.delete')}
                             className="p-4 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
                         >
                             <Trash2 size={20} />
