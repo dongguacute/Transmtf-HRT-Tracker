@@ -5,7 +5,22 @@ import { useDialog } from '../contexts/DialogContext';
 import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
 import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getBioavailabilityMultiplier, getToE2Factor } from '../../logic';
-import { Calendar, X, Clock, Info, Save, Trash2 } from 'lucide-react';
+import { Calendar, X, Clock, Info, Save, Trash2, Star } from 'lucide-react';
+
+interface DoseTemplate {
+    id: string;
+    name: string;
+    route: Route;
+    ester: Ester;
+    rawDose: string;
+    e2Dose: string;
+    patchMode: "dose" | "rate";
+    patchRate: string;
+    gelSite: number;
+    slTier: number;
+    useCustomTheta: boolean;
+    customTheta: string;
+}
 
 type DoseLevelKey = 'low' | 'medium' | 'high' | 'very_high' | 'above';
 
@@ -146,6 +161,29 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                 const now = new Date();
                 const iso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
                 setDateStr(iso);
+
+                // Auto-fill from saved default template if available
+                try {
+                    const saved = localStorage.getItem('hrt-dose-default-template');
+                    const tpl: DoseTemplate | null = saved ? JSON.parse(saved) : null;
+                    if (tpl) {
+                        setRoute(tpl.route);
+                        setEster(tpl.ester);
+                        setRawDose(tpl.rawDose);
+                        setE2Dose(tpl.e2Dose);
+                        setPatchMode(tpl.patchMode);
+                        setPatchRate(tpl.patchRate);
+                        setGelSite(tpl.gelSite);
+                        setSlTier(tpl.slTier);
+                        setUseCustomTheta(tpl.useCustomTheta);
+                        setCustomTheta(tpl.customTheta);
+                        setLastEditedField('raw');
+                        setIsDefault(true);
+                        return;
+                    }
+                } catch { /* ignore */ }
+                setIsDefault(false);
+
                 setRoute(Route.injection);
                 setEster(Ester.EV);
                 setRawDose("");
@@ -203,6 +241,24 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
     }, [bioMultiplier, ester, route]);
 
     const [isSaving, setIsSaving] = useState(false);
+    const [isDefault, setIsDefault] = useState(false);
+
+    // --- Default template (Plan A) ---
+    const saveAsDefault = () => {
+        if (isDefault) {
+            localStorage.removeItem('hrt-dose-default-template');
+            setIsDefault(false);
+        } else {
+            const tpl: DoseTemplate = {
+                id: 'default', name: 'default',
+                route, ester, rawDose, e2Dose,
+                patchMode, patchRate, gelSite,
+                slTier, useCustomTheta, customTheta,
+            };
+            localStorage.setItem('hrt-dose-default-template', JSON.stringify(tpl));
+            setIsDefault(true);
+        }
+    };
 
     const handleSave = () => {
         if (isSaving) return;
@@ -601,20 +657,29 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
                 <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-3 shrink-0 safe-area-pb">
                     {eventToEdit && (
-                        <button 
+                        <button
                             onClick={() => {
                                 onClose();
                                 if (onDelete) onDelete(eventToEdit.id);
-                            }} 
+                            }}
                             className="w-16 h-14 flex items-center justify-center bg-red-50 text-red-500 rounded-xl hover:bg-red-100 border border-red-100 transition-colors"
                         >
                             <Trash2 size={20} />
                         </button>
                     )}
-                    <button 
+                    {!eventToEdit && (
+                        <button
+                            onClick={saveAsDefault}
+                            title={t('template.set_default')}
+                            className={`w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0 ${isDefault ? 'bg-amber-50 border-amber-200 text-amber-400 hover:bg-amber-100' : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-amber-50 hover:text-amber-400 hover:border-amber-200'}`}
+                        >
+                            <Star size={18} fill={isDefault ? 'currentColor' : 'none'} />
+                        </button>
+                    )}
+                    <button
                         onClick={handleSave} 
                         disabled={isSaving}
-                        className={`flex-1 h-14 bg-[#f6c4d7] text-white text-lg font-bold rounded-xl hover:bg-[#f3b4cb] active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`flex-1 h-14 bg-pink-500 text-white text-lg font-bold rounded-xl hover:bg-pink-600 active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSaving ? (
                             <>

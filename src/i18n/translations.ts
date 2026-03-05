@@ -141,6 +141,8 @@ export const TRANSLATIONS_BASE = {
         "sl.mode.standard": "标准 (10 分钟)",
         "sl.mode.strict": "严格 (15 分钟)",
 
+        "template.set_default": "设为默认",
+
         "route.injection": "肌肉注射 (Injection)",
         "route.oral": "口服 (Oral)",
         "route.sublingual": "舌下 (Sublingual)",
@@ -702,6 +704,8 @@ export const TRANSLATIONS_BASE = {
         "sl.mode.casual": "5 min",
         "sl.mode.standard": "10 min",
         "sl.mode.strict": "15 min",
+
+        "template.set_default": "Set as Default",
 
         "route.injection": "Injection",
         "route.oral": "Oral",
@@ -1311,6 +1315,8 @@ export const TRANSLATIONS_BASE = {
         "sl.mode.standard": "10 мин",
         "sl.mode.strict": "15 мин",
 
+        "template.set_default": "По умолчанию",
+
         "route.injection": "Инъекция",
         "route.oral": "Перорально",
         "route.sublingual": "Сублингвально",
@@ -1585,6 +1591,8 @@ export const TRANSLATIONS = {
         "sl.mode.casual": "隨意（5 分）",
         "sl.mode.standard": "標準（10 分）",
         "sl.mode.strict": "嚴格（15 分）",
+
+        "template.set_default": "設為預設",
 
         "route.injection": "肌肉注射（Injection）",
         "route.oral": "口服（Oral）",
@@ -1900,6 +1908,8 @@ export const TRANSLATIONS = {
         "sl.mode.standard": "標準 (10 分)",
         "sl.mode.strict": "嚴格 (15 分)",
 
+        "template.set_default": "設為預設",
+
         "route.injection": "肌注 (Injection)",
         "route.oral": "口服 (Oral)",
         "route.sublingual": "舌下 (Sublingual)",
@@ -2165,6 +2175,8 @@ export const TRANSLATIONS = {
         "sl.mode.casual": "5 хв",
         "sl.mode.standard": "10 хв",
         "sl.mode.strict": "15 хв",
+
+        "template.set_default": "За замовчуванням",
 
         "route.injection": "Ін'єкція",
         "route.oral": "Перорально",
@@ -2471,6 +2483,8 @@ export const TRANSLATIONS = {
         "sl.mode.casual": "カジュアル (5分)",
         "sl.mode.standard": "標準 (10分)",
         "sl.mode.strict": "厳格 (15分)",
+
+        "template.set_default": "デフォルトに設定",
 
         "route.injection": "筋注 (Injection)",
         "route.oral": "経口 (Oral)",
