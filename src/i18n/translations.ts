@@ -142,6 +142,11 @@ export const TRANSLATIONS_BASE = {
         "sl.mode.strict": "严格 (15 分钟)",
 
         "template.set_default": "设为默认",
+        "template.title": "模板",
+        "template.save_as": "保存为模板",
+        "template.name_placeholder": "模板名称",
+        "template.confirm": "保存",
+        "template.empty": "暂无模板",
 
         "route.injection": "肌肉注射 (Injection)",
         "route.oral": "口服 (Oral)",
@@ -706,6 +711,11 @@ export const TRANSLATIONS_BASE = {
         "sl.mode.strict": "15 min",
 
         "template.set_default": "Set as Default",
+        "template.title": "Templates",
+        "template.save_as": "Save as template",
+        "template.name_placeholder": "Template name",
+        "template.confirm": "Save",
+        "template.empty": "No templates yet",
 
         "route.injection": "Injection",
         "route.oral": "Oral",
@@ -1316,6 +1326,11 @@ export const TRANSLATIONS_BASE = {
         "sl.mode.strict": "15 мин",
 
         "template.set_default": "По умолчанию",
+        "template.title": "Шаблоны",
+        "template.save_as": "Сохранить как шаблон",
+        "template.name_placeholder": "Название шаблона",
+        "template.confirm": "Сохранить",
+        "template.empty": "Нет шаблонов",
 
         "route.injection": "Инъекция",
         "route.oral": "Перорально",
@@ -1593,6 +1608,11 @@ export const TRANSLATIONS = {
         "sl.mode.strict": "嚴格（15 分）",
 
         "template.set_default": "設為預設",
+        "template.title": "模板",
+        "template.save_as": "儲存為模板",
+        "template.name_placeholder": "模板名稱",
+        "template.confirm": "儲存",
+        "template.empty": "暫無模板",
 
         "route.injection": "肌肉注射（Injection）",
         "route.oral": "口服（Oral）",
@@ -1909,6 +1929,11 @@ export const TRANSLATIONS = {
         "sl.mode.strict": "嚴格 (15 分)",
 
         "template.set_default": "設為預設",
+        "template.title": "模板",
+        "template.save_as": "儲存為模板",
+        "template.name_placeholder": "模板名稱",
+        "template.confirm": "儲存",
+        "template.empty": "未有模板",
 
         "route.injection": "肌注 (Injection)",
         "route.oral": "口服 (Oral)",
@@ -2177,6 +2202,11 @@ export const TRANSLATIONS = {
         "sl.mode.strict": "15 хв",
 
         "template.set_default": "За замовчуванням",
+        "template.title": "Шаблони",
+        "template.save_as": "Зберегти як шаблон",
+        "template.name_placeholder": "Назва шаблону",
+        "template.confirm": "Зберегти",
+        "template.empty": "Немає шаблонів",
 
         "route.injection": "Ін'єкція",
         "route.oral": "Перорально",
@@ -2485,6 +2515,11 @@ export const TRANSLATIONS = {
         "sl.mode.strict": "厳格 (15分)",
 
         "template.set_default": "デフォルトに設定",
+        "template.title": "テンプレート",
+        "template.save_as": "テンプレートとして保存",
+        "template.name_placeholder": "テンプレート名",
+        "template.confirm": "保存",
+        "template.empty": "テンプレートなし",
 
         "route.injection": "筋注 (Injection)",
         "route.oral": "経口 (Oral)",

@@ -5,7 +5,7 @@ import { useDialog } from '../contexts/DialogContext';
 import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
 import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getBioavailabilityMultiplier, getToE2Factor } from '../../logic';
-import { Calendar, X, Clock, Info, Save, Trash2, Star } from 'lucide-react';
+import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 
 interface DoseTemplate {
     id: string;
@@ -162,9 +162,9 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                 const iso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
                 setDateStr(iso);
 
-                // Auto-fill from saved default template if available
+                // Auto-fill from last-used params (silent)
                 try {
-                    const saved = localStorage.getItem('hrt-dose-default-template');
+                    const saved = localStorage.getItem('hrt-dose-last-used');
                     const tpl: DoseTemplate | null = saved ? JSON.parse(saved) : null;
                     if (tpl) {
                         setRoute(tpl.route);
@@ -178,11 +178,9 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                         setUseCustomTheta(tpl.useCustomTheta);
                         setCustomTheta(tpl.customTheta);
                         setLastEditedField('raw');
-                        setIsDefault(true);
                         return;
                     }
                 } catch { /* ignore */ }
-                setIsDefault(false);
 
                 setRoute(Route.injection);
                 setEster(Ester.EV);
@@ -241,23 +239,51 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
     }, [bioMultiplier, ester, route]);
 
     const [isSaving, setIsSaving] = useState(false);
-    const [isDefault, setIsDefault] = useState(false);
+    const [templates, setTemplates] = useState<DoseTemplate[]>(() => {
+        try {
+            const saved = localStorage.getItem('hrt-dose-templates');
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
+    const [showPanel, setShowPanel] = useState(false);
+    const [newTemplateName, setNewTemplateName] = useState("");
+    const [renamingId, setRenamingId] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState("");
 
-    // --- Default template (Plan A) ---
-    const saveAsDefault = () => {
-        if (isDefault) {
-            localStorage.removeItem('hrt-dose-default-template');
-            setIsDefault(false);
-        } else {
-            const tpl: DoseTemplate = {
-                id: 'default', name: 'default',
-                route, ester, rawDose, e2Dose,
-                patchMode, patchRate, gelSite,
-                slTier, useCustomTheta, customTheta,
-            };
-            localStorage.setItem('hrt-dose-default-template', JSON.stringify(tpl));
-            setIsDefault(true);
-        }
+    const applyTemplate = (tpl: DoseTemplate) => {
+        setRoute(tpl.route);
+        setEster(tpl.ester);
+        setRawDose(tpl.rawDose);
+        setE2Dose(tpl.e2Dose);
+        setPatchMode(tpl.patchMode);
+        setPatchRate(tpl.patchRate);
+        setGelSite(tpl.gelSite);
+        setSlTier(tpl.slTier);
+        setUseCustomTheta(tpl.useCustomTheta);
+        setCustomTheta(tpl.customTheta);
+        setLastEditedField('raw');
+        setShowPanel(false);
+    };
+
+    const saveTemplate = () => {
+        const name = newTemplateName.trim();
+        if (!name) return;
+        const tpl: DoseTemplate = {
+            id: uuidv4(), name,
+            route, ester, rawDose, e2Dose,
+            patchMode, patchRate, gelSite,
+            slTier, useCustomTheta, customTheta,
+        };
+        const updated = [...templates, tpl];
+        setTemplates(updated);
+        localStorage.setItem('hrt-dose-templates', JSON.stringify(updated));
+        setNewTemplateName("");
+    };
+
+    const deleteTemplate = (id: string) => {
+        const updated = templates.filter(t => t.id !== id);
+        setTemplates(updated);
+        localStorage.setItem('hrt-dose-templates', JSON.stringify(updated));
     };
 
     const handleSave = () => {
@@ -326,6 +352,19 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
             doseMG: finalDose,
             extras
         };
+
+        // Silently remember last-used params for next new-record prefill
+        if (!eventToEdit) {
+            try {
+                const lastUsed: DoseTemplate = {
+                    id: 'last-used', name: 'last-used',
+                    route, ester, rawDose, e2Dose,
+                    patchMode, patchRate, gelSite,
+                    slTier, useCustomTheta, customTheta,
+                };
+                localStorage.setItem('hrt-dose-last-used', JSON.stringify(lastUsed));
+            } catch { /* ignore */ }
+        }
 
         onSave(newEvent);
         setIsSaving(false);
@@ -416,7 +455,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
-            <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
+            <div className="relative bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
                 <div className="p-6 md:p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
                     <h3 className="text-xl font-semibold text-gray-900">
                         {eventToEdit ? t('modal.dose.edit_title') : t('modal.dose.add_title')}
@@ -655,6 +694,105 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     )}
                 </div>
 
+                    {/* Template panel (new-record mode only) */}
+                {!eventToEdit && showPanel && (
+                    <div className="absolute inset-x-0 bottom-[88px] bg-white border-t border-gray-200 shadow-lg rounded-b-none z-10 flex flex-col max-h-72">
+                        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
+                            <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{t('template.title')}</span>
+                            <button onClick={() => setShowPanel(false)} className="p-1 rounded-full hover:bg-gray-100">
+                                <X size={16} className="text-gray-400" />
+                            </button>
+                        </div>
+                        <div className="overflow-y-auto flex-1 px-4 py-2 space-y-1">
+                            {templates.length === 0 ? (
+                                <p className="text-xs text-gray-400 text-center py-4">{t('template.empty')}</p>
+                            ) : templates.map(tpl => renamingId === tpl.id ? (
+                                <div key={tpl.id} className="flex items-center gap-2 py-1.5 px-2">
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={renameValue}
+                                        onChange={e => setRenameValue(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                const v = renameValue.trim();
+                                                if (v) {
+                                                    const updated = templates.map(t => t.id === tpl.id ? { ...t, name: v } : t);
+                                                    setTemplates(updated);
+                                                    localStorage.setItem('hrt-dose-templates', JSON.stringify(updated));
+                                                }
+                                                setRenamingId(null);
+                                            } else if (e.key === 'Escape') {
+                                                setRenamingId(null);
+                                            }
+                                        }}
+                                        className="flex-1 text-sm px-2 py-1 border border-pink-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            const v = renameValue.trim();
+                                            if (v) {
+                                                const updated = templates.map(t => t.id === tpl.id ? { ...t, name: v } : t);
+                                                setTemplates(updated);
+                                                localStorage.setItem('hrt-dose-templates', JSON.stringify(updated));
+                                            }
+                                            setRenamingId(null);
+                                        }}
+                                        className="p-1.5 rounded-lg text-pink-400 hover:bg-pink-50 transition-colors"
+                                    >
+                                        <Check size={14} />
+                                    </button>
+                                    <button
+                                        onClick={() => setRenamingId(null)}
+                                        className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    key={tpl.id}
+                                    onClick={() => applyTemplate(tpl)}
+                                    className="w-full flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-pink-50 group text-left transition-colors"
+                                >
+                                    <span className="flex-1 text-sm text-gray-700 truncate group-hover:text-pink-600">{tpl.name}</span>
+                                    <span
+                                        role="button"
+                                        onClick={e => { e.stopPropagation(); setRenamingId(tpl.id); setRenameValue(tpl.name); }}
+                                        className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
+                                    >
+                                        <Pencil size={14} />
+                                    </span>
+                                    <span
+                                        role="button"
+                                        onClick={e => { e.stopPropagation(); deleteTemplate(tpl.id); }}
+                                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
+                            <input
+                                type="text"
+                                value={newTemplateName}
+                                onChange={e => setNewTemplateName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && saveTemplate()}
+                                placeholder={t('template.name_placeholder')}
+                                className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-200"
+                            />
+                            <button
+                                onClick={saveTemplate}
+                                disabled={!newTemplateName.trim()}
+                                className="px-3 py-2 bg-pink-500 text-white text-sm font-semibold rounded-lg hover:bg-pink-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                            >
+                                <Check size={14} /> {t('template.confirm')}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-3 shrink-0 safe-area-pb">
                     {eventToEdit && (
                         <button
@@ -669,15 +807,15 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     )}
                     {!eventToEdit && (
                         <button
-                            onClick={saveAsDefault}
-                            title={t('template.set_default')}
-                            className={`w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0 ${isDefault ? 'bg-amber-50 border-amber-200 text-amber-400 hover:bg-amber-100' : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-amber-50 hover:text-amber-400 hover:border-amber-200'}`}
+                            onClick={() => setShowPanel(p => !p)}
+                            title={t('template.title')}
+                            className={`w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0 ${showPanel ? 'bg-pink-50 border-pink-200 text-pink-400' : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-pink-50 hover:text-pink-400 hover:border-pink-200'}`}
                         >
-                            <Star size={18} fill={isDefault ? 'currentColor' : 'none'} />
+                            <Bookmark size={18} fill={showPanel ? 'currentColor' : 'none'} />
                         </button>
                     )}
                     <button
-                        onClick={handleSave} 
+                        onClick={handleSave}
                         disabled={isSaving}
                         className={`flex-1 h-14 bg-pink-500 text-white text-lg font-bold rounded-xl hover:bg-pink-600 active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
