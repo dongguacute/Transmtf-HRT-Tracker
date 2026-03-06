@@ -3,6 +3,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { QRCodeCanvas } from 'qrcode.react';
 import { encryptData, DoseEvent, LabResult } from '../../logic';
 import { X, QrCode, Download, Lock, Copy } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: { isOpen: boolean, onClose: () => void, onExport: (encrypt: boolean) => void, events: DoseEvent[], labResults: LabResult[], weight: number }) => {
     const { t } = useTranslation();
@@ -59,15 +60,23 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
         }
     };
 
+    const dialogRef = useFocusTrap(isOpen, onClose);
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
-            <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300 safe-area-pb">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="export-modal-title"
+                className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300 safe-area-pb"
+            >
                 <div className="flex justify-between items-center mb-6 shrink-0">
-                    <h3 className="text-xl font-semibold text-gray-900">{t('export.title')}</h3>
-                    <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
-                        <X size={20} className="text-gray-500" />
+                    <h3 id="export-modal-title" className="text-xl font-semibold text-gray-900">{t('export.title')}</h3>
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
+                        <X size={20} className="text-gray-500" aria-hidden="true" />
                     </button>
                 </div>
 
@@ -92,13 +101,16 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                     {activeTab === 'qr' && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl">
-                                <label className="text-sm font-bold text-gray-700">{t('qr.encrypt_label')}</label>
-                                <div 
-                                    className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${isEncrypted ? 'bg-pink-400' : 'bg-gray-300'}`} 
+                                <label id="encrypt-label" className="text-sm font-bold text-gray-700">{t('qr.encrypt_label')}</label>
+                                <button
+                                    role="switch"
+                                    aria-checked={isEncrypted}
+                                    aria-labelledby="encrypt-label"
                                     onClick={() => setIsEncrypted(!isEncrypted)}
+                                    className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors border-0 outline-none focus:ring-2 focus:ring-pink-300 ${isEncrypted ? 'bg-pink-400' : 'bg-gray-300'}`}
                                 >
-                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${isEncrypted ? 'translate-x-4' : ''}`} />
-                                </div>
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${isEncrypted ? 'translate-x-4' : ''}`} aria-hidden="true" />
+                                </button>
                             </div>
 
                             {displayData && !isTooLargeForQr ? (
@@ -118,6 +130,10 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                                             <p className="font-mono font-bold text-gray-800 text-lg select-all">{password}</p>
                                         </div>
                                     )}
+
+                                    <div aria-live="polite" aria-atomic="true" className="sr-only">
+                                        {copyState === 'copied' ? t('qr.copied') : ''}
+                                    </div>
 
                                     <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-2">
                                         <button

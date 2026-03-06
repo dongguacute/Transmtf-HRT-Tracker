@@ -459,7 +459,6 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
     return (
         <div
             className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            aria-hidden="true"
         >
             <div
                 ref={dialogRef}

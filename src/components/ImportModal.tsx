@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import jsQR from 'jsqr';
 import { X, QrCode, Activity, ImageIcon, Upload } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClose: () => void; onImportJson: (text: string) => Promise<boolean> }) => {
     const { t } = useTranslation();
@@ -71,15 +72,23 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
         e.target.value = "";
     };
 
+    const dialogRef = useFocusTrap(isOpen, onClose);
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
-            <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300 safe-area-pb">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="import-modal-title"
+                className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300 safe-area-pb"
+            >
                 <div className="flex justify-between items-center mb-6 shrink-0">
-                    <h3 className="text-xl font-semibold text-gray-900">{t('import.title')}</h3>
-                    <button onClick={onClose} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
-                        <X size={20} className="text-gray-500" />
+                    <h3 id="import-modal-title" className="text-xl font-semibold text-gray-900">{t('import.title')}</h3>
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
+                        <X size={20} className="text-gray-500" aria-hidden="true" />
                     </button>
                 </div>
 
@@ -113,7 +122,7 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                             <input type="file" accept="image/*" ref={qrFileInputRef} onChange={handleQrImageUpload} className="hidden" />
                             
                             {errorMsg && (
-                                <div className="p-3 bg-red-50 text-red-500 text-xs font-bold rounded-xl text-center">
+                                <div role="alert" className="p-3 bg-red-50 text-red-500 text-xs font-bold rounded-xl text-center">
                                     {errorMsg}
                                 </div>
                             )}

@@ -31,7 +31,7 @@ const WeightEditorModal = ({ isOpen, onClose, currentWeight, onSave }: any) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200" aria-hidden="true">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
             <div
                 ref={dialogRef}
                 role="dialog"
@@ -66,9 +66,10 @@ const WeightEditorModal = ({ isOpen, onClose, currentWeight, onSave }: any) => {
                 </div>
                 <div className="flex gap-3">
                     <button onClick={onClose} className="flex-1 py-3.5 text-gray-600 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 transition">{t('btn.cancel')}</button>
-                    <button 
-                        onClick={handleSave} 
+                    <button
+                        onClick={handleSave}
                         disabled={isSaving}
+                        aria-busy={isSaving}
                         className={`flex-1 py-3.5 bg-[#f6c4d7] text-white font-bold rounded-xl hover:bg-[#f3b4cb] transition ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSaving ? (

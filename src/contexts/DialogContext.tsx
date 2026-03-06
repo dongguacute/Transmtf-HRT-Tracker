@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { useTranslation } from './LanguageContext';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 type DialogType = 'alert' | 'confirm';
 
@@ -66,6 +67,8 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
     setResolver(null);
   };
 
+  const dialogRef = useFocusTrap(isOpen, () => handleChoice(type === 'alert' ? 'confirm' : 'cancel'));
+
   return (
     <DialogContext.Provider value={{ showDialog }}>
       {children}
@@ -84,19 +87,26 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
             @keyframes dialogScaleIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
           `}</style>
           <div className="w-full max-w-sm" style={{ animation: 'dialogScaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.92)',
-              backdropFilter: 'blur(24px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-              border: '1px solid rgba(255, 255, 255, 0.7)',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.14), 0 1px 0 rgba(255,255,255,0.9) inset',
-              borderRadius: '24px',
-              padding: '24px',
-            }}>
-              <h3 className="text-base font-bold text-gray-900 mb-1.5">
+            <div
+              ref={dialogRef}
+              role={type === 'alert' ? 'alertdialog' : 'dialog'}
+              aria-modal="true"
+              aria-labelledby="dialog-title"
+              aria-describedby="dialog-msg"
+              style={{
+                background: 'rgba(255, 255, 255, 0.92)',
+                backdropFilter: 'blur(24px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+                border: '1px solid rgba(255, 255, 255, 0.7)',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.14), 0 1px 0 rgba(255,255,255,0.9) inset',
+                borderRadius: '24px',
+                padding: '24px',
+              }}
+            >
+              <h3 id="dialog-title" className="text-base font-bold text-gray-900 mb-1.5">
                 {type === 'confirm' ? t('dialog.confirm_title') : t('dialog.alert_title')}
               </h3>
-              <p className="text-gray-500 mb-5 leading-relaxed text-sm">{message}</p>
+              <p id="dialog-msg" className="text-gray-500 mb-5 leading-relaxed text-sm">{message}</p>
 
               {/* Alert: single full-width button */}
               {type === 'alert' && (
