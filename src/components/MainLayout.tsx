@@ -123,13 +123,14 @@ const MainLayout: React.FC = () => {
                     <p className="text-sm font-black tracking-tight text-gray-900">Transmtf HRT Tracker</p>
                 </div>
 
-                <nav className="flex items-center gap-1">
+                <nav aria-label={t('nav.aria_primary')} className="flex items-center gap-1">
                     {navItems.map(({ id, label, icon: Icon }) => {
                         const active = currentView === id;
                         return (
                             <button
                                 key={id}
                                 onClick={() => handleViewChange(id)}
+                                aria-current={active ? 'page' : undefined}
                                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
                                     active
                                         ? 'bg-gray-900 text-white'
@@ -158,13 +159,14 @@ const MainLayout: React.FC = () => {
                     </button>
                     <button
                         onClick={() => navigate('/profile')}
+                        aria-label={t('nav.account') || 'Profile'}
                         className="h-9 w-9 rounded-full border-2 border-gray-200 overflow-hidden hover:border-pink-400 transition"
                     >
                         {isAuthenticated && avatarUrl && !avatarError ? (
-                            <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" onError={() => setAvatarError(true)} />
+                            <img src={avatarUrl} alt="" aria-hidden="true" className="h-full w-full object-cover" onError={() => setAvatarError(true)} />
                         ) : (
                             <div className="flex h-full w-full items-center justify-center bg-gray-50">
-                                <User size={17} className="text-gray-500" />
+                                <User size={17} className="text-gray-500" aria-hidden="true" />
                             </div>
                         )}
                     </button>
@@ -195,7 +197,7 @@ const MainLayout: React.FC = () => {
             </main>
 
             {/* ── Mobile bottom nav — iOS 26 Liquid Glass ── */}
-            <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-1 pb-3 bg-gray-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+            <nav aria-label={t('nav.aria_mobile')} className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-1 pb-3 bg-gray-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
                 <div
                     className="rounded-3xl px-1.5 py-1.5"
                     style={{
@@ -213,6 +215,7 @@ const MainLayout: React.FC = () => {
                                 <button
                                     key={id}
                                     onClick={() => handleViewChange(id)}
+                                    aria-current={active ? 'page' : undefined}
                                     className="relative flex flex-col items-center gap-0.5 py-2 px-1 rounded-2xl transition-all duration-200"
                                     style={active ? {
                                         background: 'rgba(255,255,255,0.95)',

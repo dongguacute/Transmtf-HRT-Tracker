@@ -289,6 +289,8 @@ export const TRANSLATIONS_BASE = {
 
         // Account pages
         "nav.account": "我的",
+        "nav.aria_primary": "主导航",
+        "nav.aria_mobile": "底部导航",
         "account.title": "账户中心",
         "account.backToHome": "返回首页",
         "account.member": "Transmtf HRT Tracker 用户",
@@ -860,6 +862,8 @@ export const TRANSLATIONS_BASE = {
 
         // Account pages
         "nav.account": "Account",
+        "nav.aria_primary": "Primary navigation",
+        "nav.aria_mobile": "Bottom navigation",
         "account.title": "Account",
         "account.backToHome": "Back to Home",
         "account.member": "Transmtf HRT Tracker Member",
@@ -1149,6 +1153,8 @@ export const TRANSLATIONS_BASE = {
         "nav.history": "Журнал",
         "nav.lab": "Калибровка",
         "nav.settings": "Настройки",
+        "nav.aria_primary": "Основная навигация",
+        "nav.aria_mobile": "Нижняя навигация",
 
         "status.estimate": "Текущая расчётная концентрация",
         "status.weight": "Вес",
@@ -1474,6 +1480,8 @@ export const TRANSLATIONS = {
         "nav.history": "紀錄",
         "nav.lab": "校準",
         "nav.settings": "設定",
+        "nav.aria_primary": "主導覽列",
+        "nav.aria_mobile": "底部導覽列",
 
         "status.estimate": "目前估算濃度",
         "status.weight": "體重",
@@ -1801,6 +1809,8 @@ export const TRANSLATIONS = {
         "nav.history": "記錄",
         "nav.lab": "校準",
         "nav.settings": "設定",
+        "nav.aria_primary": "主導航",
+        "nav.aria_mobile": "底部導航",
 
         "status.estimate": "而家估算濃度",
         "status.weight": "體重",
@@ -2075,6 +2085,8 @@ export const TRANSLATIONS = {
         "nav.history": "Журнал",
         "nav.lab": "Калібрування",
         "nav.settings": "Налаштування",
+        "nav.aria_primary": "Основна навігація",
+        "nav.aria_mobile": "Нижня навігація",
 
         "status.estimate": "Поточна розрахункова концентрація",
         "status.weight": "Маса тіла",
@@ -2392,6 +2404,8 @@ export const TRANSLATIONS = {
         "nav.history": "記録",
         "nav.lab": "校正",
         "nav.settings": "設定",
+        "nav.aria_primary": "メインナビゲーション",
+        "nav.aria_mobile": "ボトムナビゲーション",
 
         "status.estimate": "現在の推定濃度",
         "status.weight": "体重",
