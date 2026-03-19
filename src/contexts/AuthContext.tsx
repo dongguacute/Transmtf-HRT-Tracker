@@ -3,6 +3,7 @@ import apiClient from '../api/client';
 import type { AuthTokens } from '../api/types';
 import { clearSecurityPassword } from '../utils/crypto';
 import { deleteCookie, getCookie, setCookie } from '../utils/cookies';
+import { setLogoutInProgress } from '../utils/authSessionState';
 
 interface User {
   username: string;
@@ -13,6 +14,7 @@ interface AuthContextType {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isLoggingOut: boolean;
   login: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string; status?: number }>;
   register: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string }>;
   loginWithTokens: (tokens: AuthTokens, username: string) => void;
@@ -49,42 +51,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const refreshPromiseRef = React.useRef<Promise<boolean> | null>(null);
 
   const logout = useCallback(async (clearLocalData: boolean = false) => {
-    try {
-      await apiClient.logout();
-    } catch (error) {
-      console.error('Failed to logout from server:', error);
+    if (isLoggingOut) {
+      return;
     }
+
+    const tokenToRevoke = accessToken || getStoredValue(TOKEN_STORAGE_KEY);
+
+    setIsLoggingOut(true);
+    setLogoutInProgress(true);
 
     setAccessToken(null);
     setUser(null);
     apiClient.setAccessToken(null);
 
-    // Always clear auth tokens
+    // Always clear auth tokens before touching local data so sync can no longer authenticate.
     clearStoredValue(TOKEN_STORAGE_KEY);
     clearStoredValue(REFRESH_TOKEN_STORAGE_KEY);
     clearStoredValue(USERNAME_STORAGE_KEY);
 
-    // Always clear security password cookie
     try {
-      await clearSecurityPassword();
-    } catch (error) {
-      console.error('Failed to clear security password during logout:', error);
-    }
+      try {
+        if (tokenToRevoke) {
+          await apiClient.logout(tokenToRevoke);
+        }
+      } catch (error) {
+        console.error('Failed to logout from server:', error);
+      }
 
-    // Optionally clear local user data
-    if (clearLocalData) {
-      localStorage.removeItem('hrt-events');
-      localStorage.removeItem('hrt-weight');
-      localStorage.removeItem('hrt-lab-results');
-      localStorage.removeItem('hrt-lang');
-      localStorage.removeItem('hrt-last-modified');
-      localStorage.removeItem('hrt-last-sync-time');
-      localStorage.removeItem('hrt-last-pull-time');
+      // Always clear security password cookie
+      try {
+        await clearSecurityPassword();
+      } catch (error) {
+        console.error('Failed to clear security password during logout:', error);
+      }
+
+      // Optionally clear local user data
+      if (clearLocalData) {
+        localStorage.removeItem('hrt-events');
+        localStorage.removeItem('hrt-weight');
+        localStorage.removeItem('hrt-lab-results');
+        localStorage.removeItem('hrt-lang');
+        localStorage.removeItem('hrt-last-modified');
+        localStorage.removeItem('hrt-last-sync-time');
+        localStorage.removeItem('hrt-last-pull-time');
+      }
+    } finally {
+      setLogoutInProgress(false);
+      setIsLoggingOut(false);
     }
-  }, []);
+  }, [accessToken, isLoggingOut]);
 
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     // Prevent multiple simultaneous refresh attempts
@@ -223,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         accessToken,
         isAuthenticated: !!user && !!accessToken,
         isLoading,
+        isLoggingOut,
         login,
         register,
         loginWithTokens,
