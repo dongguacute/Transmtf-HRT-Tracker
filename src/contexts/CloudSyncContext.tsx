@@ -3,6 +3,7 @@ import apiClient from '../api/client';
 import { useAuth } from './AuthContext';
 import { useSecurityPassword } from './SecurityPasswordContext';
 import { computeDataHash } from '../utils/dataHash';
+import { isLogoutInProgress } from '../utils/authSessionState';
 
 interface CloudSyncContextType {
   isSyncing: boolean;
@@ -129,7 +130,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const syncToCloud = useCallback(async () => {
     // CRITICAL FIX: Password checks BEFORE ref check (unconditional guard)
     // Don't sync if not authenticated
-    if (!isAuthenticated) {
+    if (!isAuthenticated || isLogoutInProgress()) {
       return;
     }
 
@@ -182,7 +183,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const syncFromCloud = useCallback(async () => {
     // CRITICAL FIX: Password checks BEFORE ref check (unconditional guard)
     // Don't sync if not authenticated
-    if (!isAuthenticated) {
+    if (!isAuthenticated || isLogoutInProgress()) {
       return;
     }
 
@@ -329,7 +330,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Smart initial sync: compare local and cloud data, sync the newer one
   const initialSmartSync = useCallback(async () => {
     // Same guards as other sync functions
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isLogoutInProgress()) return;
     if (hasSecurityPassword && !isVerified) return;
     if (hasSecurityPassword && passwordVerificationFailed) return;
     if (hasSecurityPassword && !securityPassword) return;
@@ -394,7 +395,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Watch for localStorage changes and auto-sync
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isLogoutInProgress()) return;
 
     const triggerSync = () => {
       syncToCloud();
@@ -426,7 +427,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Poll cloud every 3 seconds
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || isLogoutInProgress()) return;
 
     if (shouldPullFromCloud()) {
       // Initial smart sync when user logs in (only if we should pull)

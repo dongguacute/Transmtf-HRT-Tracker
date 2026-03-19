@@ -318,9 +318,10 @@ class ApiClient {
     });
   }
 
-  async logout(): Promise<ApiResponse<LogoutResponse>> {
+  async logout(tokenOverride?: string): Promise<ApiResponse<LogoutResponse>> {
     return this.request<LogoutResponse>('/auth/logout', {
       method: 'POST',
+      headers: tokenOverride ? { Authorization: `Bearer ${tokenOverride}` } : undefined,
     });
   }
 
