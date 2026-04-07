@@ -16,6 +16,46 @@ We strictly adhere to the `PKcore.swift` and `PKparameter.swift` logic provided 
 
 我们严格遵循 **@LaoZhong-Mihari** 提供的 `PKcore.swift` 与 `PKparameter.swift` 中的逻辑，确保网页端模拟与原生实现在精度上保持一致（包括三室模型、双相肌注库房动力学以及特定的舌下吸收分层等）。
 
+## Code Architecture 代码结构
+
+The core logic has been split into small, focused modules so pharmacokinetics,
+calibration, personal learning, and data encryption can evolve more safely and
+be understood more quickly by new contributors.<br>
+
+当前核心逻辑已经拆分为几个职责清晰的小模块，便于后续维护、继续贡献，以及让新协作者更快理解项目结构。<br>
+
+Current module map:<br>
+当前模块关系如下：<br>
+
+* `types.ts` - Shared domain enums and interfaces such as `DoseEvent`, `LabResult`, and `SimulationResult`.<br>
+  `types.ts`：共享的数据模型与类型定义，例如 `DoseEvent`、`LabResult`、`SimulationResult`。<br>
+
+* `pk.ts` - Population PK constants, route-specific parameter resolution, the main simulation engine, and interpolation helpers.<br>
+  `pk.ts`：基础药代参数、给药途径参数解析、主模拟引擎，以及插值工具。<br>
+
+* `calibration.ts` - Lab unit conversion, legacy ratio-based calibration, and the Bayesian OU-Kalman calibration model.<br>
+  `calibration.ts`：化验值单位转换、旧版比值校准，以及 Bayesian OU-Kalman 动态校准模型。<br>
+
+* `personalModel.ts` - EKF-based personal learning, E2/CPA personalized estimation, and confidence interval generation.<br>
+  `personalModel.ts`：基于 EKF 的个体化学习、E2/CPA 个体估算，以及置信区间生成。<br>
+
+* `src/utils/dataEncryption.ts` - Generic AES-GCM helpers for import/export payload encryption.<br>
+  `src/utils/dataEncryption.ts`：用于导入导出数据的通用 AES-GCM 加密工具。<br>
+
+* `logic.ts` - Compatibility barrel file that re-exports the public API used by the UI.<br>
+  `logic.ts`：兼容层与统一出口，对 UI 暴露稳定的公共接口。<br>
+
+Dependency direction:<br>
+依赖方向：<br>
+
+`types.ts` → `pk.ts` → (`calibration.ts`, `personalModel.ts`) → `logic.ts`<br>
+
+This keeps the mathematical foundation reusable while letting higher-level
+calibration and personalization layers build on top of the same PK model
+without duplicating formulas.<br>
+
+这样可以保证药代数学底座只维护一份，而校准层与个体化学习层都能在同一套 PK 模型之上构建，避免重复实现和参数漂移。<br>
+
 ## Features 功能
 
 * **Multi-Route Simulation**: Supports Injection (Valerate, Benzoate, Cypionate, Enanthate), Oral, Sublingual, Gel, and Patches.<br>
