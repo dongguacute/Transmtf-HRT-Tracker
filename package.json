@@ -12,6 +12,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@hrt-tracker/core": "workspace:*",
     "@types/uuid": "^10.0.0",
     "clsx": "^2.1.1",
     "jsqr": "1.4.0",
