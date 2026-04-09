@@ -29,13 +29,13 @@ import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
 import StatisticsModal from '../components/StatisticsModal';
 import type { Lang } from '../i18n/translations';
-import flagCN from '../flag_svg/cn.svg';
-import flagTW from '../flag_svg/tw.svg';
-import flagHK from '../flag_svg/hk.svg';
-import flagUS from '../flag_svg/us.svg';
-import flagJP from '../flag_svg/jp.svg';
-import flagRU from '../flag_svg/ru.svg';
-import flagUA from '../flag_svg/ua.svg';
+import flagCN from '../assets/flags/cn.svg';
+import flagTW from '../assets/flags/tw.svg';
+import flagHK from '../assets/flags/hk.svg';
+import flagUS from '../assets/flags/us.svg';
+import flagJP from '../assets/flags/jp.svg';
+import flagRU from '../assets/flags/ru.svg';
+import flagUA from '../assets/flags/ua.svg';
 
 type JsonRecord = Record<string, unknown>;
 

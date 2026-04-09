@@ -31,3 +31,5 @@ src-tauri/target/release
 .env
 .env.*
 !.env.example
+.turbo
+.wrangler
