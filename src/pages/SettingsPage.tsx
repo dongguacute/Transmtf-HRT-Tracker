@@ -18,8 +18,7 @@ import {
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
-import { DoseEvent, LabResult, encryptData, decryptData } from '../../logic';
-import { computeDataHash } from '../utils/dataHash';
+import { DoseEvent, LabResult, encryptData, decryptData, computeDataHash } from '../../logic';
 import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import ImportModal from '../components/ImportModal';
