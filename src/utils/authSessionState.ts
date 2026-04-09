@@ -1,7 +1,3 @@
-let logoutInProgress = false;
+import { isLogoutInProgress, setLogoutInProgress } from '../../logic';
 
-export const setLogoutInProgress = (value: boolean) => {
-  logoutInProgress = value;
-};
-
-export const isLogoutInProgress = () => logoutInProgress;
+export { isLogoutInProgress, setLogoutInProgress };
